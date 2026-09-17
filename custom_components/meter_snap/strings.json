@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MeterSnap - KI & Bilderkennung",
+        "description": "Wähle den KI-Dienst für die Ziffernerkennung deiner Zähler.",
+        "data": {
+          "ocr_provider": "KI-Anbieter",
+          "api_key": "API-Schlüssel (Gemini oder OpenAI)",
+          "custom_endpoint": "Benutzerdefinierter Endpunkt (z.B. lokales Ollama)",
+          "custom_model": "Modellname"
+        }
+      },
+      "electricity": {
+        "title": "MeterSnap - Stromvertrag",
+        "description": "Hinterlege die Konditionen deines aktuellen Stromvertrags.",
+        "data": {
+          "electricity_enabled": "Stromzähler aktivieren",
+          "electricity_unit_price": "Arbeitspreis (€/kWh, z.B. 0.32)",
+          "electricity_base_price": "Grundpreis (€/Monat, z.B. 12.00)",
+          "electricity_monthly_payment": "Monatlicher Abschlag (€, z.B. 90.00)"
+        }
+      },
+      "gas": {
+        "title": "MeterSnap - Gasvertrag",
+        "description": "Hinterlege die Konditionen deines Gastarifs (Werte findest du auf der Gasrechnung).",
+        "data": {
+          "gas_enabled": "Gaszähler aktivieren",
+          "gas_unit_price": "Arbeitspreis (€/kWh, z.B. 0.10)",
+          "gas_base_price": "Grundpreis (€/Monat, z.B. 10.00)",
+          "gas_monthly_payment": "Monatlicher Abschlag (€, z.B. 110.00)",
+          "gas_calorific_value": "Brennwert (kWh/m³, z.B. 11.2)",
+          "gas_conversion_factor": "Zustandszahl Z (z.B. 0.95)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MeterSnap Einstellungen anpassen",
+        "description": "Tarife, Preise, Abschläge oder KI-Schlüssel aktualisieren.",
+        "data": {
+          "ocr_provider": "KI-Anbieter",
+          "api_key": "API-Schlüssel",
+          "custom_endpoint": "Benutzerdefinierter Endpunkt",
+          "custom_model": "Modellname",
+          "electricity_enabled": "Stromzähler aktivieren",
+          "electricity_unit_price": "Strom Arbeitspreis (€/kWh)",
+          "electricity_base_price": "Strom Grundpreis (€/Monat)",
+          "electricity_monthly_payment": "Strom Abschlag (€)",
+          "gas_enabled": "Gaszähler aktivieren",
+          "gas_unit_price": "Gas Arbeitspreis (€/kWh)",
+          "gas_base_price": "Gas Grundpreis (€/Monat)",
+          "gas_monthly_payment": "Gas Abschlag (€)",
+          "gas_calorific_value": "Gas Brennwert (kWh/m³)",
+          "gas_conversion_factor": "Gas Zustandszahl Z"
+        }
+      }
+    }
+  }
+}

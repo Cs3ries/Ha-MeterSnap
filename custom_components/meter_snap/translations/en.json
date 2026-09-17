@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MeterSnap - AI & OCR Settings",
+        "description": "Choose the AI service for meter reading extraction.",
+        "data": {
+          "ocr_provider": "AI Provider",
+          "api_key": "API Key (Gemini or OpenAI)",
+          "custom_endpoint": "Custom Endpoint (e.g. local Ollama)",
+          "custom_model": "Model Name"
+        }
+      },
+      "electricity": {
+        "title": "MeterSnap - Electricity Tariff",
+        "description": "Configure your electricity contract values.",
+        "data": {
+          "electricity_enabled": "Enable Electricity Meter",
+          "electricity_unit_price": "Unit Price (€/kWh)",
+          "electricity_base_price": "Base Price (€/month)",
+          "electricity_monthly_payment": "Monthly Advance Payment (€)"
+        }
+      },
+      "gas": {
+        "title": "MeterSnap - Gas Tariff",
+        "description": "Configure your gas contract values (from your gas bill).",
+        "data": {
+          "gas_enabled": "Enable Gas Meter",
+          "gas_unit_price": "Unit Price (€/kWh)",
+          "gas_base_price": "Base Price (€/month)",
+          "gas_monthly_payment": "Monthly Advance Payment (€)",
+          "gas_calorific_value": "Calorific Value (Brennwert kWh/m³)",
+          "gas_conversion_factor": "Volume Conversion Factor (Zustandszahl Z)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update MeterSnap Settings",
+        "description": "Adjust tariffs, prices, advance payments or AI keys.",
+        "data": {
+          "ocr_provider": "AI Provider",
+          "api_key": "API Key",
+          "custom_endpoint": "Custom Endpoint",
+          "custom_model": "Model Name",
+          "electricity_enabled": "Enable Electricity Meter",
+          "electricity_unit_price": "Electricity Unit Price (€/kWh)",
+          "electricity_base_price": "Electricity Base Price (€/month)",
+          "electricity_monthly_payment": "Electricity Monthly Payment (€)",
+          "gas_enabled": "Enable Gas Meter",
+          "gas_unit_price": "Gas Unit Price (€/kWh)",
+          "gas_base_price": "Gas Base Price (€/month)",
+          "gas_monthly_payment": "Gas Monthly Payment (€)",
+          "gas_calorific_value": "Gas Calorific Value (kWh/m³)",
+          "gas_conversion_factor": "Gas Conversion Factor (Z)"
+        }
+      }
+    }
+  }
+}

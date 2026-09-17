@@ -1,0 +1,12 @@
+{
+  "domain": "meter_snap",
+  "name": "MeterSnap",
+  "codeowners": ["@metersnap"],
+  "config_flow": true,
+  "documentation": "https://github.com/custom-components/meter_snap",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/custom-components/meter_snap/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
