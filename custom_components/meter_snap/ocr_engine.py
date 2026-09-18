@@ -34,19 +34,19 @@ Analysiere das beigefügte Foto und ermittle den exakten aktuellen Zählerstand.
 Regeln:
 1. Zählertyp ist: {type_desc} (Einheit: {unit}).
 2. Wenn Stromzähler:
-   - Bei analogen Ferraris-Zählern: Schwarze Ziffernrollen sind ganze Zahlen vor dem Komma. Eine rote Rolle ganz rechts ist die Nachkommastelle (z.B. 047843 auf Schwarz und 2 auf Rot ergibt 47843.2 kWh). Falls keine rote Rolle existiert, gibt es keine Nachkommastellen.
+   - Bei analogen Ferraris-Zählern: Schwarze Ziffernrollen sind ganze Zahlen vor dem Komma. Eine rote Rolle ganz rechts ist die Nachkommastelle (z.B. 12345 auf Schwarz und 6 auf Rot ergibt 12345.6 kWh). Falls keine rote Rolle existiert, gibt es keine Nachkommastellen.
    - Bei digitalen Zählern (LCD/mME): Suche gezielt nach dem Kenncode '1.8.0' (Bezug/Verbrauch). Ignoriere '2.8.0' (Einspeisung) und Prüfanzeigen (wie 888888).
 3. Wenn Gaszähler:
    - Ziffernrollen mit schwarzem Hintergrund sind ganze m³. Führende Nullen bei ganzen Zahlen weglassen oder beibehalten.
-   - Ziffernrollen mit rotem Rahmen / rotem Hintergrund (meist 3 Ziffern ganz rechts) sind Nachkommastellen (z.B. 03763 im schwarzen Bereich und 776 im roten Bereich ergibt 3763.776 m³).
-4. Ignoriere Barcodes, Eigentumsnummern, Seriennummern, Zählernummern, Baujahr und Warnhinweise (z.B. 7 ELS25 3899 8544, BK-G4MT, enercity AG ignorieren).
+   - Ziffernrollen mit rotem Rahmen / rotem Hintergrund (meist 3 Ziffern ganz rechts) sind Nachkommastellen (z.B. 01234 im schwarzen Bereich und 567 im roten Bereich ergibt 1234.567 m³).
+4. Ignoriere Barcodes, Eigentumsnummern, Seriennummern, Zählernummern, Baujahr und Warnhinweise (z.B. Seriennummern oder Herstellerangaben wie Landis+Gyr, Itron etc. ignorieren).
 5. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Objekt ohne Erklärungen und ohne Markdown-Code-Ticks zurück.
 
 Format:
 {{
-  "reading": 3763.776,
-  "integer_part": 3763,
-  "decimal_part": 776,
+  "reading": 12345.67,
+  "integer_part": 12345,
+  "decimal_part": 67,
   "unit": "{unit}",
   "confidence": "high",
   "details": "Erkannt von Zählwerk..."
@@ -99,7 +99,7 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
         except Exception:
             pass
 
-    # 5. Regex extraction fallback (e.g. "reading": 47843.2 or "reading": "3763.776")
+    # 5. Regex extraction fallback (e.g. "reading": 12345.6 or "reading": "1234.567")
     reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9]+(?:[\.,][0-9]+)?)["\']?', cleaned, re.IGNORECASE)
     if reading_match:
         val_str = reading_match.group(1).replace(",", ".")
@@ -112,7 +112,7 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
         except (ValueError, TypeError):
             pass
 
-    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 3763.776"
+    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 12345.6"
     keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9]{3,7}(?:[\.,][0-9]+)?)', cleaned, re.IGNORECASE)
     if keyword_match:
         val_str = keyword_match.group(1).replace(",", ".")
