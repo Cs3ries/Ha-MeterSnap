@@ -344,8 +344,7 @@ class MeterSnapOCREngine:
                 }
             ],
             "temperature": 0.1,
-            "max_tokens": 2048,
-            "reasoning": {"exclude": True},
+            "max_tokens": 1024,
         }
 
         async with self._session.post(
