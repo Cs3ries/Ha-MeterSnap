@@ -54,32 +54,89 @@ Format:
 
 
 def clean_json_response(raw_text: str) -> dict[str, Any] | None:
-    """Extract and parse JSON from model response."""
+    """Extract and parse JSON from model response with fallback strategies."""
     if not raw_text:
         return None
 
     cleaned = raw_text.strip()
-    # Remove markdown code blocks if present
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
 
-    # Search for json object
-    match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
-    if match:
-        cleaned = match.group(1)
+    # 1. Remove <think>...</think> reasoning blocks from thinking models (e.g. Ling, DeepSeek, Qwen)
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
 
-    try:
-        data = json.loads(cleaned)
-        if isinstance(data, dict) and "reading" in data:
-            try:
+    # 2. Extract from markdown code blocks ```json ... ``` or ``` ... ```
+    code_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+    if code_block:
+        candidate = code_block.group(1).strip()
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict) and "reading" in data:
                 data["reading"] = float(data["reading"])
                 return data
-            except (ValueError, TypeError):
-                pass
-    except Exception as err:
-        _LOGGER.warning("JSON parse error from OCR response: %s (raw: %s)", err, raw_text)
+        except Exception:
+            pass
 
+    # 3. Non-greedy search for JSON object with "reading"
+    json_match = re.search(r"(\{[^{}]*\"reading\"[^{}]*\})", cleaned, re.DOTALL)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(1))
+            if isinstance(data, dict) and "reading" in data:
+                data["reading"] = float(data["reading"])
+                return data
+        except Exception:
+            pass
+
+    # 4. Greedy search fallback
+    json_greedy = re.search(r"(\{.*\})", cleaned, re.DOTALL)
+    if json_greedy:
+        try:
+            data = json.loads(json_greedy.group(1))
+            if isinstance(data, dict) and "reading" in data:
+                data["reading"] = float(data["reading"])
+                return data
+        except Exception:
+            pass
+
+    # 5. Regex extraction fallback (e.g. "reading": 47843.2)
+    reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9]+(?:[\.,][0-9]+)?)["\']?', cleaned, re.IGNORECASE)
+    if reading_match:
+        val_str = reading_match.group(1).replace(",", ".")
+        try:
+            return {
+                "reading": float(val_str),
+                "confidence": "medium",
+                "details": "Per Fallback-Muster aus KI-Antwort extrahiert",
+            }
+        except (ValueError, TypeError):
+            pass
+
+    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 47843.2"
+    keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9]{3,7}(?:[\.,][0-9]+)?)', cleaned, re.IGNORECASE)
+    if keyword_match:
+        val_str = keyword_match.group(1).replace(",", ".")
+        try:
+            return {
+                "reading": float(val_str),
+                "confidence": "medium",
+                "details": "Aus Textantwort extrahiert",
+            }
+        except (ValueError, TypeError):
+            pass
+
+    # 7. Last-resort fallback: extract any 4-7 digit number with optional decimals
+    number_match = re.search(r'\b([0-9]{4,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
+    if number_match:
+        val_str = number_match.group(1).replace(",", ".")
+        try:
+            return {
+                "reading": float(val_str),
+                "confidence": "low",
+                "details": "Zahlenmuster erkannt",
+            }
+        except (ValueError, TypeError):
+            pass
+
+    _LOGGER.warning("Could not parse meter reading from OCR response: %s", raw_text)
     return None
 
 
@@ -285,7 +342,8 @@ class MeterSnapOCREngine:
                 }
             ],
             "temperature": 0.1,
-            "max_tokens": 1024,
+            "max_tokens": 2048,
+            "reasoning": {"exclude": True},
         }
 
         async with self._session.post(
