@@ -26,3 +26,4 @@ test/
 # Local data & logs
 meter_snap/images/
 *.log
+ha-fehler/

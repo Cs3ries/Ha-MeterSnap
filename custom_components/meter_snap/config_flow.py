@@ -122,10 +122,13 @@ class MeterSnapConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class MeterSnapOptionsFlow(config_entries.OptionsFlow):
     """Handle options (editing tariffs & keys after installation)."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry | None = None) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
-        self._options: dict[str, Any] = dict(config_entry.options) or dict(config_entry.data)
+        if config_entry is not None:
+            try:
+                self.config_entry = config_entry
+            except AttributeError:
+                pass
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage tariffs and configuration."""

@@ -41,11 +41,23 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # Register frontend static path for the Lovelace card
     frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
     if os.path.isdir(frontend_dir):
-        hass.http.register_static_path(
-            URL_BASE,
-            frontend_dir,
-            cache_headers=False,
-        )
+        if hasattr(hass.http, "async_register_static_paths"):
+            from homeassistant.components.http import StaticPathConfig
+            await hass.http.async_register_static_paths(
+                [
+                    StaticPathConfig(
+                        URL_BASE,
+                        frontend_dir,
+                        cache_headers=False,
+                    )
+                ]
+            )
+        else:
+            hass.http.register_static_path(
+                URL_BASE,
+                frontend_dir,
+                cache_headers=False,
+            )
         _LOGGER.debug("Registered MeterSnap frontend static path: %s", frontend_dir)
 
     # Register API views

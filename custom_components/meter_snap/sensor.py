@@ -24,6 +24,7 @@ from .const import (
     DOMAIN,
     METER_ELECTRICITY,
     METER_GAS,
+    VERSION,
 )
 from .coordinator import MeterSnapCoordinator
 
@@ -149,7 +150,7 @@ class MeterSnapBaseSensor(SensorEntity):
             "name": f"MeterSnap {meter_title}",
             "manufacturer": "MeterSnap",
             "model": "Visual Meter Reader",
-            "sw_version": "1.0.0",
+            "sw_version": VERSION,
         }
 
     async def async_added_to_hass(self) -> None:
