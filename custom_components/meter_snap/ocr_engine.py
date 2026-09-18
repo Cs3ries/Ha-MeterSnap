@@ -34,19 +34,19 @@ Analysiere das beigefügte Foto und ermittle den exakten aktuellen Zählerstand.
 Regeln:
 1. Zählertyp ist: {type_desc} (Einheit: {unit}).
 2. Wenn Stromzähler:
-   - Bei analogen Ferraris-Zählern: Schwarze Ziffernrollen sind ganze Zahlen vor dem Komma. Eine rote Rolle ganz rechts ist die Nachkommastelle (z.B. 12345.6). Falls keine rote Rolle existiert, gibt es keine Nachkommastellen.
+   - Bei analogen Ferraris-Zählern: Schwarze Ziffernrollen sind ganze Zahlen vor dem Komma. Eine rote Rolle ganz rechts ist die Nachkommastelle (z.B. 047843 auf Schwarz und 2 auf Rot ergibt 47843.2 kWh). Falls keine rote Rolle existiert, gibt es keine Nachkommastellen.
    - Bei digitalen Zählern (LCD/mME): Suche gezielt nach dem Kenncode '1.8.0' (Bezug/Verbrauch). Ignoriere '2.8.0' (Einspeisung) und Prüfanzeigen (wie 888888).
 3. Wenn Gaszähler:
-   - Ziffernrollen mit schwarzem Hintergrund sind ganze m³.
-   - Ziffernrollen mit rotem Rahmen / rotem Hintergrund (meist 3 Ziffern ganz rechts) sind Nachkommastellen (z.B. 04285.391 m³).
-4. Ignoriere Barcodes, Eigentumsnummern, Seriennummern, Zählernummern, Baujahr und Warnhinweise.
+   - Ziffernrollen mit schwarzem Hintergrund sind ganze m³. Führende Nullen bei ganzen Zahlen weglassen oder beibehalten.
+   - Ziffernrollen mit rotem Rahmen / rotem Hintergrund (meist 3 Ziffern ganz rechts) sind Nachkommastellen (z.B. 03763 im schwarzen Bereich und 776 im roten Bereich ergibt 3763.776 m³).
+4. Ignoriere Barcodes, Eigentumsnummern, Seriennummern, Zählernummern, Baujahr und Warnhinweise (z.B. 7 ELS25 3899 8544, BK-G4MT, enercity AG ignorieren).
 5. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Objekt ohne Erklärungen und ohne Markdown-Code-Ticks zurück.
 
 Format:
 {{
-  "reading": 12345.67,
-  "integer_part": 12345,
-  "decimal_part": 67,
+  "reading": 3763.776,
+  "integer_part": 3763,
+  "decimal_part": 776,
   "unit": "{unit}",
   "confidence": "high",
   "details": "Erkannt von Zählwerk..."
@@ -63,41 +63,43 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
     # 1. Remove <think>...</think> reasoning blocks from thinking models (e.g. Ling, DeepSeek, Qwen)
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
 
-    # 2. Extract from markdown code blocks ```json ... ``` or ``` ... ```
-    code_block = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
-    if code_block:
-        candidate = code_block.group(1).strip()
-        try:
-            data = json.loads(candidate)
-            if isinstance(data, dict) and "reading" in data:
-                data["reading"] = float(data["reading"])
-                return data
-        except Exception:
-            pass
+    candidates = []
 
-    # 3. Non-greedy search for JSON object with "reading"
-    json_match = re.search(r"(\{[^{}]*\"reading\"[^{}]*\})", cleaned, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group(1))
-            if isinstance(data, dict) and "reading" in data:
-                data["reading"] = float(data["reading"])
-                return data
-        except Exception:
-            pass
+    # 2. Extract from markdown code blocks ```json ... ``` or ``` ... ```
+    code_blocks = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+    candidates.extend(code_blocks)
+
+    # 3. Non-greedy search for JSON objects with "reading" or "integer_part"
+    json_matches = re.findall(r"(\{[^{}]*(?:\"reading\"|\"integer_part\")[^{}]*\})", cleaned, re.DOTALL)
+    candidates.extend(json_matches)
 
     # 4. Greedy search fallback
-    json_greedy = re.search(r"(\{.*\})", cleaned, re.DOTALL)
-    if json_greedy:
+    json_greedy = re.findall(r"(\{.*\})", cleaned, re.DOTALL)
+    candidates.extend(json_greedy)
+
+    candidates.append(cleaned)
+
+    for cand in candidates:
+        cand_clean = cand.strip()
+        # Remove trailing commas before } or ]
+        cand_clean = re.sub(r",\s*([\}\]])", r"\1", cand_clean)
         try:
-            data = json.loads(json_greedy.group(1))
-            if isinstance(data, dict) and "reading" in data:
-                data["reading"] = float(data["reading"])
-                return data
+            data = json.loads(cand_clean)
+            if isinstance(data, dict):
+                if "reading" in data and data["reading"] is not None:
+                    val_str = str(data["reading"]).strip().replace(" ", "").replace(",", ".")
+                    data["reading"] = float(val_str)
+                    return data
+                if "integer_part" in data and data["integer_part"] is not None:
+                    int_str = str(data["integer_part"]).strip().replace(" ", "")
+                    dec_str = str(data.get("decimal_part", 0)).strip().replace(" ", "")
+                    val_str = f"{int_str}.{dec_str}" if dec_str and dec_str != "0" else int_str
+                    data["reading"] = float(val_str)
+                    return data
         except Exception:
             pass
 
-    # 5. Regex extraction fallback (e.g. "reading": 47843.2)
+    # 5. Regex extraction fallback (e.g. "reading": 47843.2 or "reading": "3763.776")
     reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9]+(?:[\.,][0-9]+)?)["\']?', cleaned, re.IGNORECASE)
     if reading_match:
         val_str = reading_match.group(1).replace(",", ".")
@@ -110,7 +112,7 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
         except (ValueError, TypeError):
             pass
 
-    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 47843.2"
+    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 3763.776"
     keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9]{3,7}(?:[\.,][0-9]+)?)', cleaned, re.IGNORECASE)
     if keyword_match:
         val_str = keyword_match.group(1).replace(",", ".")
@@ -123,8 +125,8 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
         except (ValueError, TypeError):
             pass
 
-    # 7. Last-resort fallback: extract any 4-7 digit number with optional decimals
-    number_match = re.search(r'\b([0-9]{4,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
+    # 7. Last-resort fallback: extract any 3-7 digit number with optional decimals
+    number_match = re.search(r'\b([0-9]{3,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
     if number_match:
         val_str = number_match.group(1).replace(",", ".")
         try:

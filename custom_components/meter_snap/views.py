@@ -70,7 +70,24 @@ class MeterSnapScanView(HomeAssistantView):
                         mime_type = "image/png"
                     elif "image/webp" in header:
                         mime_type = "image/webp"
+                    elif "image/heic" in header or "image/heif" in header:
+                        mime_type = "image/heic"
                 image_bytes = base64.b64decode(b64_str)
+
+                # Backend HEIC fallback conversion if pillow_heif is installed
+                if mime_type == "image/heic" or (len(image_bytes) > 12 and image_bytes[4:8] == b"ftyp"):
+                    try:
+                        import pillow_heif
+                        from PIL import Image
+                        import io
+                        pillow_heif.register_heif_opener()
+                        img = Image.open(io.BytesIO(image_bytes))
+                        out = io.BytesIO()
+                        img.convert("RGB").save(out, format="JPEG", quality=85)
+                        image_bytes = out.getvalue()
+                        mime_type = "image/jpeg"
+                    except Exception as e:
+                        _LOGGER.debug("Backend HEIC conversion fallback not available: %s", e)
 
             if not image_bytes:
                 return self.json({"success": False, "error": "Kein Bild empfangen"}, status_code=400)

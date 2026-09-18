@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.5
+ * Version 1.0.6
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -143,6 +143,25 @@ class MeterSnapCard extends HTMLElement {
     });
   }
 
+  _loadHeicConverter() {
+    if (window.heic2any) return Promise.resolve(window.heic2any);
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/meter_snap_frontend/heic2any.min.js';
+      script.onload = () => resolve(window.heic2any);
+      script.onerror = () => {
+        // Fallback to CDN if local static asset fails
+        console.warn('MeterSnap: Lokales heic2any nicht erreichbar, lade von CDN...');
+        const cdnScript = document.createElement('script');
+        cdnScript.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+        cdnScript.onload = () => resolve(window.heic2any);
+        cdnScript.onerror = (e) => reject(new Error('HEIC-Konverter konnte nicht geladen werden'));
+        document.head.appendChild(cdnScript);
+      };
+      document.head.appendChild(script);
+    });
+  }
+
   _compressImage(file, maxDimension = 1600, quality = 0.85) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -176,7 +195,10 @@ class MeterSnapCard extends HTMLElement {
             resolve(e.target.result);
           }
         };
-        img.onerror = () => resolve(e.target.result);
+        img.onerror = (err) => {
+          console.error('MeterSnap: Image decode failed in browser:', err);
+          reject(new Error('Bild konnte im Browser nicht geladen werden.'));
+        };
         img.src = e.target.result;
       };
       reader.onerror = (err) => reject(err);
@@ -189,15 +211,46 @@ class MeterSnapCard extends HTMLElement {
     if (!file) return;
 
     this._loading = true;
-    this._statusMessage = 'KI liest Zählerstand aus dem Foto...';
+    this._statusMessage = 'Bereite Foto vor...';
     this._render();
 
     try {
-      // 1. Extract photo capture date & time from EXIF / file
+      let fileToProcess = file;
+      const isHeic = (
+        file.type === 'image/heic' ||
+        file.type === 'image/heif' ||
+        /\.hei[cf]$/i.test(file.name || '')
+      );
+
+      // Auto-convert iPhone HEIC format to standard JPEG
+      if (isHeic) {
+        this._statusMessage = 'Konvertiere iPhone HEIC-Foto in JPEG...';
+        this._render();
+        try {
+          await this._loadHeicConverter();
+          if (window.heic2any) {
+            const converted = await window.heic2any({
+              blob: file,
+              toType: 'image/jpeg',
+              quality: 0.88,
+            });
+            const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+            const newName = (file.name || 'meter').replace(/\.hei[cf]$/i, '.jpg');
+            fileToProcess = new File([jpegBlob], newName, { type: 'image/jpeg' });
+          }
+        } catch (heicErr) {
+          console.warn('MeterSnap: HEIC-Konvertierung per heic2any fehlgeschlagen:', heicErr);
+        }
+      }
+
+      this._statusMessage = 'KI liest Zählerstand aus dem Foto...';
+      this._render();
+
+      // 1. Extract photo capture date & time from EXIF / file (strips GPS/serials later in canvas)
       const photoDateTime = await this._extractPhotoDateTime(file);
 
       // 2. Compress and resize image to JPEG (strips all GPS / device metadata!)
-      const base64Image = await this._compressImage(file);
+      const base64Image = await this._compressImage(fileToProcess);
 
       const resp = await this._callApi('POST', '/api/meter_snap/scan', {
         image: base64Image,
@@ -740,7 +793,7 @@ class MeterSnapCard extends HTMLElement {
         <!-- Action Buttons -->
         ${!this._pendingScan && !this._loading ? `
           <div class="action-bar">
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" class="file-input" id="cameraInput" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,image/*" capture="environment" class="file-input" id="cameraInput" />
             <button class="btn-capture" id="btnCapture">
               📸 Foto aufnehmen / hochladen
             </button>
