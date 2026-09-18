@@ -276,8 +276,11 @@ class MeterSnapOCREngine:
                 {
                     "role": "user",
                     "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_uri, "detail": "auto"},
+                        },
                         {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_uri}},
                     ],
                 }
             ],

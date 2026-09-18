@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/Cs3ries/Ha-MeterSnap/issues",
   "dependencies": ["http"],
   "requirements": [],
-  "version": "1.0.2"
+  "version": "1.0.3"
 }
