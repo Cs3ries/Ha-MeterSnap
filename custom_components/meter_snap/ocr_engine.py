@@ -262,7 +262,11 @@ class MeterSnapOCREngine:
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
         data_uri = f"data:{mime_type};base64,{b64_data}"
 
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/Cs3ries/Ha-MeterSnap",
+            "X-Title": "MeterSnap",
+        }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
@@ -278,6 +282,7 @@ class MeterSnapOCREngine:
                 }
             ],
             "temperature": 0.1,
+            "max_tokens": 1024,
         }
 
         async with self._session.post(
@@ -285,9 +290,31 @@ class MeterSnapOCREngine:
         ) as resp:
             if resp.status != 200:
                 text = await resp.text()
+                _LOGGER.error("Custom API error response (%s): %s", resp.status, text)
+                error_msg = text
+                try:
+                    err_json = json.loads(text)
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        err_info = err_json["error"]
+                        if isinstance(err_info, dict):
+                            msg = err_info.get("message", "")
+                            meta = err_info.get("metadata", {})
+                            if isinstance(meta, dict) and "raw" in meta:
+                                raw_str = meta["raw"]
+                                try:
+                                    raw_json = json.loads(raw_str)
+                                    if isinstance(raw_json, dict) and "message" in raw_json:
+                                        msg = f"{msg} ({raw_json['message']})"
+                                except Exception:
+                                    msg = f"{msg} ({raw_str[:150]})"
+                            error_msg = msg or str(err_info)
+                        else:
+                            error_msg = str(err_info)
+                except Exception:
+                    pass
                 return {
                     "success": False,
-                    "error": f"Custom API Fehler ({resp.status}): {text[:200]}",
+                    "error": f"Custom API Fehler ({resp.status}): {error_msg[:300]}",
                 }
 
             result_json = await resp.json()

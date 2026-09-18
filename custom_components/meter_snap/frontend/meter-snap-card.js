@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.1
+ * Version 1.0.2
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -105,6 +105,85 @@ class MeterSnapCard extends HTMLElement {
     }
   }
 
+  _extractPhotoDateTime(file) {
+    return new Promise((resolve) => {
+      // Fallback to file.lastModified
+      const fallbackDate = file.lastModified ? new Date(file.lastModified) : new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const formatLocal = (d) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      const fallbackStr = formatLocal(fallbackDate);
+
+      // Read first 128KB to extract EXIF DateTimeOriginal if present
+      const slice = file.slice(0, 131072);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const buffer = new Uint8Array(e.target.result);
+          let str = '';
+          for (let i = 0; i < buffer.length; i++) {
+            const code = buffer[i];
+            str += (code >= 32 && code <= 126) ? String.fromCharCode(code) : ' ';
+          }
+
+          // EXIF standard date format: "YYYY:MM:DD HH:MM:SS"
+          const match = str.match(/\b(20[2-9]\d)[:\-](\d{2})[:\-](\d{2})[\sT](\d{2}):(\d{2}):(\d{2})\b/);
+          if (match) {
+            const [_, year, month, day, hours, minutes] = match;
+            resolve(`${year}-${month}-${day}T${hours}:${minutes}`);
+            return;
+          }
+        } catch (err) {
+          console.debug('EXIF date extraction fallback:', err);
+        }
+        resolve(fallbackStr);
+      };
+      reader.onerror = () => resolve(fallbackStr);
+      reader.readAsArrayBuffer(slice);
+    });
+  }
+
+  _compressImage(file, maxDimension = 1600, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          try {
+            // Drawing on canvas creates a fresh bitmap and completely strips
+            // all EXIF metadata (GPS location coordinates, camera serials, device info)
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } catch (canvasErr) {
+            console.warn('MeterSnap: Canvas compression failed, falling back to original:', canvasErr);
+            resolve(e.target.result);
+          }
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  }
+
   async _handleFileSelected(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -114,15 +193,11 @@ class MeterSnapCard extends HTMLElement {
     this._render();
 
     try {
-      // Read as Base64
-      const reader = new FileReader();
-      const base64Promise = new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = (e) => reject(e);
-        reader.readAsDataURL(file);
-      });
+      // 1. Extract photo capture date & time from EXIF / file
+      const photoDateTime = await this._extractPhotoDateTime(file);
 
-      const base64Image = await base64Promise;
+      // 2. Compress and resize image to JPEG (strips all GPS / device metadata!)
+      const base64Image = await this._compressImage(file);
 
       const resp = await this._callApi('POST', '/api/meter_snap/scan', {
         image: base64Image,
@@ -133,15 +208,14 @@ class MeterSnapCard extends HTMLElement {
         throw new Error(resp?.error || 'Zählerstand konnte nicht erkannt werden.');
       }
 
-      // Open confirmation dialog
-      const nowStr = new Date().toISOString().slice(0, 16);
+      // Open confirmation dialog with the original photo timestamp
       this._pendingScan = {
         reading: resp.reading !== undefined ? resp.reading : '',
         unit: resp.unit || (this._meterType === 'electricity' ? 'kWh' : 'm³'),
         confidence: resp.confidence || 'high',
         details: resp.details || '',
         image: base64Image,
-        timestamp: nowStr,
+        timestamp: photoDateTime,
         notes: 'Erfasst via Foto',
       };
     } catch (err) {
@@ -666,7 +740,7 @@ class MeterSnapCard extends HTMLElement {
         <!-- Action Buttons -->
         ${!this._pendingScan && !this._loading ? `
           <div class="action-bar">
-            <input type="file" accept="image/*" capture="environment" class="file-input" id="cameraInput" />
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" class="file-input" id="cameraInput" />
             <button class="btn-capture" id="btnCapture">
               📸 Foto aufnehmen / hochladen
             </button>
@@ -786,7 +860,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.1 geladen ',
+  '%c METERSNAP CARD %c Version 1.0.2 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );
