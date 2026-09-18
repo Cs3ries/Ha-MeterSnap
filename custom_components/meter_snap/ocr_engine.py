@@ -54,6 +54,26 @@ Format:
 }}"""
 
 
+def parse_number_str(val: Any) -> float | None:
+    """Parse string or number into float supporting German and English notation."""
+    if val is None:
+        return None
+    s = str(val).strip().replace(" ", "")
+    s = re.sub(r"[kwhm³m3]+$", "", s, flags=re.IGNORECASE).strip()
+    # If both dot and comma exist: e.g. 47.843,2 (German) or 47,843.2 (English)
+    if "." in s and "," in s:
+        if s.rfind(",") > s.rfind("."):  # German 47.843,2
+            s = s.replace(".", "").replace(",", ".")
+        else:  # English 47,843.2
+            s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def clean_json_response(raw_text: str) -> dict[str, Any] | None:
     """Extract and parse JSON from model response with fallback strategies."""
     if not raw_text:
@@ -88,56 +108,60 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
             data = json.loads(cand_clean)
             if isinstance(data, dict):
                 if "reading" in data and data["reading"] is not None:
-                    val_str = str(data["reading"]).strip().replace(" ", "").replace(",", ".")
-                    data["reading"] = float(val_str)
-                    return data
+                    num = parse_number_str(data["reading"])
+                    if num is not None:
+                        data["reading"] = num
+                        return data
                 if "integer_part" in data and data["integer_part"] is not None:
                     int_str = str(data["integer_part"]).strip().replace(" ", "")
-                    dec_str = str(data.get("decimal_part", 0)).strip().replace(" ", "")
-                    val_str = f"{int_str}.{dec_str}" if dec_str and dec_str != "0" else int_str
-                    data["reading"] = float(val_str)
-                    return data
+                    dec_str = str(data.get("decimal_part", "")).strip().replace(" ", "")
+                    full_str = f"{int_str}.{dec_str}" if dec_str and dec_str != "0" else int_str
+                    num = parse_number_str(full_str)
+                    if num is not None:
+                        data["reading"] = num
+                        return data
         except Exception:
             pass
 
-    # 5. Regex extraction fallback (e.g. "reading": 12345.6 or "reading": "1234.567")
-    reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9]+(?:[\.,][0-9]+)?)["\']?', cleaned, re.IGNORECASE)
+    # 5. Roll description match (e.g. "schwarz: 047843, rot: 2")
+    roll_match = re.search(r'(?:schwarz|vorkomma).*?([0-9]{3,7}).*?(?:rot|nachkomma).*?([0-9]{1,3})', cleaned, re.IGNORECASE)
+    if roll_match:
+        num = parse_number_str(f"{roll_match.group(1)}.{roll_match.group(2)}")
+        if num is not None:
+            return {"reading": num, "confidence": "high", "details": "Aus Rollenbeschreibung erkannt"}
+
+    # 6. Regex extraction fallback for "reading": ...
+    reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9][0-9\.,\s]*[0-9])["\']?', cleaned, re.IGNORECASE)
     if reading_match:
-        val_str = reading_match.group(1).replace(",", ".")
-        try:
+        num = parse_number_str(reading_match.group(1))
+        if num is not None:
             return {
-                "reading": float(val_str),
+                "reading": num,
                 "confidence": "medium",
                 "details": "Per Fallback-Muster aus KI-Antwort extrahiert",
             }
-        except (ValueError, TypeError):
-            pass
 
-    # 6. Fallback: search for numbers after German keywords like "Zählerstand ... 12345.6"
-    keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9]{3,7}(?:[\.,][0-9]+)?)', cleaned, re.IGNORECASE)
+    # 7. Fallback: search for numbers after German keywords like "Zählerstand ... 47.843,2"
+    keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9][0-9\.,\s]{2,10}[0-9])', cleaned, re.IGNORECASE)
     if keyword_match:
-        val_str = keyword_match.group(1).replace(",", ".")
-        try:
+        num = parse_number_str(keyword_match.group(1))
+        if num is not None:
             return {
-                "reading": float(val_str),
+                "reading": num,
                 "confidence": "medium",
                 "details": "Aus Textantwort extrahiert",
             }
-        except (ValueError, TypeError):
-            pass
 
-    # 7. Last-resort fallback: extract any 3-7 digit number with optional decimals
-    number_match = re.search(r'\b([0-9]{3,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
+    # 8. Last-resort fallback: extract any 3-7 digit number with optional decimals
+    number_match = re.search(r'\b([0-9]{1,3}(?:[\.,\s][0-9]{3})*(?:[\.,][0-9]+)?|[0-9]{3,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
     if number_match:
-        val_str = number_match.group(1).replace(",", ".")
-        try:
+        num = parse_number_str(number_match.group(1))
+        if num is not None:
             return {
-                "reading": float(val_str),
+                "reading": num,
                 "confidence": "low",
                 "details": "Zahlenmuster erkannt",
             }
-        except (ValueError, TypeError):
-            pass
 
     _LOGGER.warning("Could not parse meter reading from OCR response: %s", raw_text)
     return None
@@ -243,9 +267,10 @@ class MeterSnapOCREngine:
                 parsed["success"] = True
                 return parsed
 
+            snippet = (raw_text[:120] + "...") if len(raw_text) > 120 else raw_text
             return {
                 "success": False,
-                "error": "Antwort konnte nicht als Zählerstand geparst werden.",
+                "error": f"Antwort konnte nicht als Zählerstand geparst werden (KI-Rückgabe: {snippet!r}).",
                 "raw": raw_text,
             }
 
@@ -304,9 +329,10 @@ class MeterSnapOCREngine:
                 parsed["success"] = True
                 return parsed
 
+            snippet = (raw_text[:120] + "...") if len(raw_text) > 120 else raw_text
             return {
                 "success": False,
-                "error": "Antwort konnte nicht als Zählerstand geparst werden.",
+                "error": f"Antwort konnte nicht als Zählerstand geparst werden (KI-Rückgabe: {snippet!r}).",
                 "raw": raw_text,
             }
 
@@ -404,9 +430,10 @@ class MeterSnapOCREngine:
                         parsed["success"] = True
                         return parsed
 
+                    snippet = (raw_text[:120] + "...") if len(raw_text) > 120 else raw_text
                     return {
                         "success": False,
-                        "error": "Antwort konnte nicht als Zählerstand geparst werden.",
+                        "error": f"Antwort konnte nicht als Zählerstand geparst werden (KI-Rückgabe: {snippet!r}).",
                         "raw": raw_text,
                     }
             except (aiohttp.ClientError, asyncio.TimeoutError) as net_err:

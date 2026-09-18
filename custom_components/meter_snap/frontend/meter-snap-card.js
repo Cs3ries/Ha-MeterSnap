@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.9
+ * Version 1.0.10
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -214,6 +214,9 @@ class MeterSnapCard extends HTMLElement {
     this._statusMessage = 'Bereite Foto vor...';
     this._render();
 
+    let base64Image = null;
+    let photoDateTime = null;
+
     try {
       let fileToProcess = file;
       const isHeic = (
@@ -247,10 +250,10 @@ class MeterSnapCard extends HTMLElement {
       this._render();
 
       // 1. Extract photo capture date & time from EXIF / file (strips GPS/serials later in canvas)
-      const photoDateTime = await this._extractPhotoDateTime(file);
+      photoDateTime = await this._extractPhotoDateTime(file);
 
       // 2. Compress and resize image to JPEG (strips all GPS / device metadata!)
-      const base64Image = await this._compressImage(fileToProcess);
+      base64Image = await this._compressImage(fileToProcess);
 
       const resp = await this._callApi('POST', '/api/meter_snap/scan', {
         image: base64Image,
@@ -279,8 +282,8 @@ class MeterSnapCard extends HTMLElement {
         unit: this._meterType === 'electricity' ? 'kWh' : 'm³',
         confidence: 'manual',
         details: 'Manuelle Eingabe',
-        image: null,
-        timestamp: nowStr,
+        image: base64Image || null,
+        timestamp: photoDateTime || nowStr,
         notes: '',
       };
     } finally {
@@ -920,7 +923,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.9 geladen ',
+  '%c METERSNAP CARD %c Version 1.0.10 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );
