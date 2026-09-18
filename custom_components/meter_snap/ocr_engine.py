@@ -1,6 +1,7 @@
 """Vision AI OCR Engine for MeterSnap."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -354,51 +355,72 @@ class MeterSnapOCREngine:
             "max_tokens": 1024,
         }
 
-        async with self._session.post(
-            url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
-        ) as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                _LOGGER.error("Custom API error response (%s): %s", resp.status, text)
-                error_msg = text
-                try:
-                    err_json = json.loads(text)
-                    if isinstance(err_json, dict) and "error" in err_json:
-                        err_info = err_json["error"]
-                        if isinstance(err_info, dict):
-                            msg = err_info.get("message", "")
-                            meta = err_info.get("metadata", {})
-                            if isinstance(meta, dict) and "raw" in meta:
-                                raw_str = meta["raw"]
-                                try:
-                                    raw_json = json.loads(raw_str)
-                                    if isinstance(raw_json, dict) and "message" in raw_json:
-                                        msg = f"{msg} ({raw_json['message']})"
-                                except Exception:
-                                    msg = f"{msg} ({raw_str[:150]})"
-                            error_msg = msg or str(err_info)
-                        else:
-                            error_msg = str(err_info)
-                except Exception:
-                    pass
-                return {
-                    "success": False,
-                    "error": f"Custom API Fehler ({resp.status}): {error_msg[:300]}",
-                }
+        last_error = None
+        for attempt in range(2):
+            try:
+                async with self._session.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60, connect=15),
+                ) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        _LOGGER.error("Custom API error response (%s): %s", resp.status, text)
+                        error_msg = text
+                        try:
+                            err_json = json.loads(text)
+                            if isinstance(err_json, dict) and "error" in err_json:
+                                err_info = err_json["error"]
+                                if isinstance(err_info, dict):
+                                    msg = err_info.get("message", "")
+                                    meta = err_info.get("metadata", {})
+                                    if isinstance(meta, dict) and "raw" in meta:
+                                        raw_str = meta["raw"]
+                                        try:
+                                            raw_json = json.loads(raw_str)
+                                            if isinstance(raw_json, dict) and "message" in raw_json:
+                                                msg = f"{msg} ({raw_json['message']})"
+                                        except Exception:
+                                            msg = f"{msg} ({raw_str[:150]})"
+                                    error_msg = msg or str(err_info)
+                                else:
+                                    error_msg = str(err_info)
+                        except Exception:
+                            pass
+                        return {
+                            "success": False,
+                            "error": f"Custom API Fehler ({resp.status}): {error_msg[:300]}",
+                        }
 
-            result_json = await resp.json()
-            choices = result_json.get("choices", [])
-            if not choices:
-                return {"success": False, "error": "Custom API lieferte keine Antwort."}
+                    result_json = await resp.json()
+                    choices = result_json.get("choices", [])
+                    if not choices:
+                        return {"success": False, "error": "Custom API lieferte keine Antwort."}
 
-            raw_text = choices[0].get("message", {}).get("content", "")
-            parsed = clean_json_response(raw_text)
-            if parsed:
-                parsed["success"] = True
-                return parsed
+                    raw_text = choices[0].get("message", {}).get("content", "")
+                    parsed = clean_json_response(raw_text)
+                    if parsed:
+                        parsed["success"] = True
+                        return parsed
 
-            return {
-                "success": False,
-                "error": "Antwort konnte nicht als Zählerstand geparst werden.",
-                "raw": raw_text,
-            }
+                    return {
+                        "success": False,
+                        "error": "Antwort konnte nicht als Zählerstand geparst werden.",
+                        "raw": raw_text,
+                    }
+            except (aiohttp.ClientError, asyncio.TimeoutError) as net_err:
+                last_error = net_err
+                if attempt == 0:
+                    _LOGGER.warning(
+                        "Netzwerk-/DNS-Fehler beim Aufruf von %s (Versuch 1/2), erneuter Versuch in 1.5s: %s",
+                        url,
+                        net_err,
+                    )
+                    await asyncio.sleep(1.5)
+                    continue
+
+        return {
+            "success": False,
+            "error": f"Verbindungs-/DNS-Fehler zu {url}: {last_error}",
+        }
