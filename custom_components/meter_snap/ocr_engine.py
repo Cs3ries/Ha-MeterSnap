@@ -58,7 +58,10 @@ def parse_number_str(val: Any) -> float | None:
     """Parse string or number into float supporting German and English notation."""
     if val is None:
         return None
-    s = str(val).strip().replace(" ", "")
+    s = str(val).strip()
+    # Strip leading OBIS code if present (e.g. 1.8.0: or 1.8.0*00)
+    s = re.sub(r"^(?:1-0:)?(?:[0-2]\.8\.[0-9](?:\*\d+)?)[\s:=*]+", "", s).strip()
+    s = s.replace(" ", "")
     s = re.sub(r"[kwhm³m3]+$", "", s, flags=re.IGNORECASE).strip()
     # If both dot and comma exist: e.g. 47.843,2 (German) or 47,843.2 (English)
     if "." in s and "," in s:
@@ -130,6 +133,13 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
         if num is not None:
             return {"reading": num, "confidence": "high", "details": "Aus Rollenbeschreibung erkannt"}
 
+    # 5b. Match OBIS 1.8.0 code for digital electricity meters
+    obis_match = re.search(r'(?:1\.8\.0|1-0:1\.8\.0)[\s:=*]+([0-9][0-9\.,\s]{1,10}[0-9])', cleaned, re.IGNORECASE)
+    if obis_match:
+        num = parse_number_str(obis_match.group(1))
+        if num is not None:
+            return {"reading": num, "confidence": "high", "details": "Aus OBIS 1.8.0 Kennziffer erkannt"}
+
     # 6. Regex extraction fallback for "reading": ...
     reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9][0-9\.,\s]*[0-9])["\']?', cleaned, re.IGNORECASE)
     if reading_match:
@@ -152,8 +162,9 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
                 "details": "Aus Textantwort extrahiert",
             }
 
-    # 8. Last-resort fallback: extract any 3-7 digit number with optional decimals
-    number_match = re.search(r'\b([0-9]{1,3}(?:[\.,\s][0-9]{3})*(?:[\.,][0-9]+)?|[0-9]{3,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned, re.IGNORECASE)
+    # 8. Last-resort fallback: extract any 3-7 digit number (strip OBIS codes first so 1.8.0 is not picked)
+    cleaned_for_num = re.sub(r'\b[0-2]\.8\.[0-9]\b', '', cleaned)
+    number_match = re.search(r'\b([0-9]{1,3}(?:[\.,\s][0-9]{3})*(?:[\.,][0-9]+)?|[0-9]{3,7}(?:[\.,][0-9]+)?)\s*(?:kwh|m³|m3)?\b', cleaned_for_num, re.IGNORECASE)
     if number_match:
         num = parse_number_str(number_match.group(1))
         if num is not None:
