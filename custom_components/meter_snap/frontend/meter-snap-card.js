@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.7
+ * Version 1.0.8
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -435,9 +435,16 @@ class MeterSnapCard extends HTMLElement {
         .title-row {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           font-size: 1.25rem;
           font-weight: 600;
+        }
+        .title-logo {
+          width: 32px;
+          height: 32px;
+          border-radius: 6px;
+          object-fit: cover;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.15);
         }
         .title-icon {
           font-size: 1.5rem;
@@ -719,7 +726,7 @@ class MeterSnapCard extends HTMLElement {
         <!-- Header & Tabs -->
         <div class="header">
           <div class="title-row">
-            <span class="title-icon">${isElec ? '⚡' : '🔥'}</span>
+            <img src="/meter_snap_frontend/icon.png" class="title-logo" alt="MeterSnap" onerror="this.style.display='none'" />
             <span>${this._config.title || 'MeterSnap'}</span>
           </div>
           <div class="tabs">
@@ -913,7 +920,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.7 geladen ',
+  '%c METERSNAP CARD %c Version 1.0.8 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

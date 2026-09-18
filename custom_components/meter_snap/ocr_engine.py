@@ -316,10 +316,17 @@ class MeterSnapOCREngine:
         mime_type: str,
     ) -> dict[str, Any]:
         """Call Custom / Local OpenAI-compatible Vision API."""
-        url = self._custom_endpoint or "http://localhost:11434/v1/chat/completions"
-        model = self._custom_model or DEFAULT_CUSTOM_MODEL
+        url = (self._custom_endpoint or "http://localhost:11434/v1/chat/completions").strip()
+        if "openroueter.ai" in url:
+            url = url.replace("openroueter.ai", "openrouter.ai")
+
+        model = (self._custom_model or DEFAULT_CUSTOM_MODEL).strip()
+        if "openroueter" in model:
+            model = model.replace("openroueter", "openrouter")
+
+        safe_mime = mime_type if mime_type in ("image/jpeg", "image/png", "image/webp") else "image/jpeg"
         b64_data = base64.b64encode(image_bytes).decode("utf-8")
-        data_uri = f"data:{mime_type};base64,{b64_data}"
+        data_uri = f"data:{safe_mime};base64,{b64_data}"
 
         headers = {
             "Content-Type": "application/json",
