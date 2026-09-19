@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.10
+ * Version 1.0.11
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -162,10 +162,35 @@ class MeterSnapCard extends HTMLElement {
     });
   }
 
+  async _isHeicFile(file) {
+    if (
+      file.type === 'image/heic' ||
+      file.type === 'image/heif' ||
+      /\.hei[cf]$/i.test(file.name || '')
+    ) {
+      return true;
+    }
+    try {
+      const slice = file.slice(0, 16);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length >= 8) {
+        const brand = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]);
+        if (brand === 'ftyp') {
+          return true;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    return false;
+  }
+
   _compressImage(file, maxDimension = 1600, quality = 0.85) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
+        const rawDataUrl = e.target.result;
         const img = new Image();
         img.onload = () => {
           let width = img.width;
@@ -192,16 +217,21 @@ class MeterSnapCard extends HTMLElement {
             resolve(canvas.toDataURL('image/jpeg', quality));
           } catch (canvasErr) {
             console.warn('MeterSnap: Canvas compression failed, falling back to original:', canvasErr);
-            resolve(e.target.result);
+            resolve(rawDataUrl);
           }
         };
         img.onerror = (err) => {
-          console.error('MeterSnap: Image decode failed in browser:', err);
-          reject(new Error('Bild konnte im Browser nicht geladen werden.'));
+          // In Chromium/Vivaldi or on unsupported formats (HEIC without native decode),
+          // do NOT fail the upload! Fallback to the original data URL so the backend can process it.
+          console.warn('MeterSnap: Browser image decode failed, falling back to direct upload:', err);
+          resolve(rawDataUrl);
         };
-        img.src = e.target.result;
+        img.src = rawDataUrl;
       };
-      reader.onerror = (err) => reject(err);
+      reader.onerror = (err) => {
+        console.error('MeterSnap: FileReader failed:', err);
+        resolve(null);
+      };
       reader.readAsDataURL(file);
     });
   }
@@ -219,11 +249,7 @@ class MeterSnapCard extends HTMLElement {
 
     try {
       let fileToProcess = file;
-      const isHeic = (
-        file.type === 'image/heic' ||
-        file.type === 'image/heif' ||
-        /\.hei[cf]$/i.test(file.name || '')
-      );
+      const isHeic = await this._isHeicFile(file);
 
       // Auto-convert iPhone HEIC format to standard JPEG
       if (isHeic) {
@@ -254,6 +280,9 @@ class MeterSnapCard extends HTMLElement {
 
       // 2. Compress and resize image to JPEG (strips all GPS / device metadata!)
       base64Image = await this._compressImage(fileToProcess);
+      if (!base64Image) {
+        throw new Error('Datei konnte nicht geladen werden.');
+      }
 
       const resp = await this._callApi('POST', '/api/meter_snap/scan', {
         image: base64Image,
@@ -923,7 +952,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.10 geladen ',
+  '%c METERSNAP CARD %c Version 1.0.11 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

@@ -64,18 +64,23 @@ class MeterSnapScanView(HomeAssistantView):
                 data = await request.json()
                 b64_str = data.get("image", "")
                 meter_type = data.get("meter_type", METER_ELECTRICITY)
-                if "," in b64_str:
-                    header, b64_str = b64_str.split(",", 1)
-                    if "image/png" in header:
-                        mime_type = "image/png"
-                    elif "image/webp" in header:
-                        mime_type = "image/webp"
-                    elif "image/heic" in header or "image/heif" in header:
-                        mime_type = "image/heic"
-                image_bytes = base64.b64decode(b64_str)
+                if b64_str:
+                    if "," in b64_str:
+                        header, b64_str = b64_str.split(",", 1)
+                        if "image/png" in header:
+                            mime_type = "image/png"
+                        elif "image/webp" in header:
+                            mime_type = "image/webp"
+                        elif "image/heic" in header or "image/heif" in header:
+                            mime_type = "image/heic"
+                    try:
+                        image_bytes = base64.b64decode(b64_str)
+                    except Exception as err:
+                        _LOGGER.warning("Could not decode base64 image: %s", err)
+                        image_bytes = None
 
                 # Backend HEIC fallback conversion if pillow_heif is installed
-                if mime_type == "image/heic" or (len(image_bytes) > 12 and image_bytes[4:8] == b"ftyp"):
+                if image_bytes and (mime_type == "image/heic" or (len(image_bytes) > 12 and image_bytes[4:8] == b"ftyp")):
                     try:
                         import pillow_heif
                         from PIL import Image

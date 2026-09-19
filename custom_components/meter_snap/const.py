@@ -2,7 +2,7 @@
 
 DOMAIN = "meter_snap"
 NAME = "MeterSnap"
-VERSION = "1.0.10"
+VERSION = "1.0.11"
 
 # Storage
 STORAGE_KEY = "meter_snap_data"

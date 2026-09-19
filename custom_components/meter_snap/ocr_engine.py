@@ -271,7 +271,9 @@ class MeterSnapOCREngine:
                 return {"success": False, "error": "Gemini lieferte keine Antwort."}
 
             part = candidates[0].get("content", {}).get("parts", [{}])[0]
-            raw_text = part.get("text", "")
+            raw_text = part.get("text") or ""
+            if not isinstance(raw_text, str):
+                raw_text = str(raw_text)
 
             parsed = clean_json_response(raw_text)
             if parsed:
@@ -334,7 +336,11 @@ class MeterSnapOCREngine:
             if not choices:
                 return {"success": False, "error": "OpenAI lieferte keine Antwort."}
 
-            raw_text = choices[0].get("message", {}).get("content", "")
+            msg_obj = choices[0].get("message", {})
+            raw_text = msg_obj.get("content") or msg_obj.get("reasoning_content") or ""
+            if not isinstance(raw_text, str):
+                raw_text = str(raw_text)
+
             parsed = clean_json_response(raw_text)
             if parsed:
                 parsed["success"] = True
@@ -435,7 +441,18 @@ class MeterSnapOCREngine:
                     if not choices:
                         return {"success": False, "error": "Custom API lieferte keine Antwort."}
 
-                    raw_text = choices[0].get("message", {}).get("content", "")
+                    msg_obj = choices[0].get("message", {})
+                    # Some models (especially free reasoning models on OpenRouter) return content: null and put text in reasoning_content or reasoning or text
+                    raw_text = (
+                        msg_obj.get("content")
+                        or msg_obj.get("reasoning_content")
+                        or msg_obj.get("reasoning")
+                        or msg_obj.get("text")
+                        or ""
+                    )
+                    if not isinstance(raw_text, str):
+                        raw_text = str(raw_text)
+
                     parsed = clean_json_response(raw_text)
                     if parsed:
                         parsed["success"] = True
