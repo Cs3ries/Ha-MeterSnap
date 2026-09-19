@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.11
+ * Version 1.0.12
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -16,6 +16,7 @@ class MeterSnapCard extends HTMLElement {
     this._loading = false;
     this._statusMessage = '';
     this._pendingScan = null; // Holds scan result for confirmation
+    this._fileQueue = []; // Queue for multi-file batch upload
     this._previewModalImage = null;
   }
 
@@ -146,16 +147,29 @@ class MeterSnapCard extends HTMLElement {
   _loadHeicConverter() {
     if (window.heic2any) return Promise.resolve(window.heic2any);
     return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('HEIC-Konverter Timeout - Backend übernimmt'));
+      }, 3500);
+
       const script = document.createElement('script');
       script.src = '/meter_snap_frontend/heic2any.min.js';
-      script.onload = () => resolve(window.heic2any);
+      script.onload = () => {
+        clearTimeout(timer);
+        resolve(window.heic2any);
+      };
       script.onerror = () => {
         // Fallback to CDN if local static asset fails
         console.warn('MeterSnap: Lokales heic2any nicht erreichbar, lade von CDN...');
         const cdnScript = document.createElement('script');
         cdnScript.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
-        cdnScript.onload = () => resolve(window.heic2any);
-        cdnScript.onerror = (e) => reject(new Error('HEIC-Konverter konnte nicht geladen werden'));
+        cdnScript.onload = () => {
+          clearTimeout(timer);
+          resolve(window.heic2any);
+        };
+        cdnScript.onerror = (e) => {
+          clearTimeout(timer);
+          reject(new Error('HEIC-Konverter konnte nicht geladen werden'));
+        };
         document.head.appendChild(cdnScript);
       };
       document.head.appendChild(script);
@@ -236,12 +250,30 @@ class MeterSnapCard extends HTMLElement {
     });
   }
 
-  async _handleFileSelected(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
+  async _handleFilesSelected(event) {
+    const input = event.target;
+    const files = input && input.files ? Array.from(input.files) : [];
+    if (input) input.value = ''; // Reset so the exact same file can be re-selected if needed
+    if (!files.length) return;
+
+    this._fileQueue = files;
+    await this._processNextQueuedFile();
+  }
+
+  async _processNextQueuedFile() {
+    if (!this._fileQueue || !this._fileQueue.length) {
+      this._pendingScan = null;
+      this._render();
+      return;
+    }
+
+    const file = this._fileQueue.shift();
+    const remainingCount = this._fileQueue.length;
 
     this._loading = true;
-    this._statusMessage = 'Bereite Foto vor...';
+    this._statusMessage = remainingCount > 0
+      ? `Bereite Foto vor (${remainingCount + 1} Fotos in Warteschlange)...`
+      : 'Bereite Foto vor...';
     this._render();
 
     let base64Image = null;
@@ -262,17 +294,18 @@ class MeterSnapCard extends HTMLElement {
               blob: file,
               toType: 'image/jpeg',
               quality: 0.88,
+              multiple: false,
             });
             const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
             const newName = (file.name || 'meter').replace(/\.hei[cf]$/i, '.jpg');
             fileToProcess = new File([jpegBlob], newName, { type: 'image/jpeg' });
           }
         } catch (heicErr) {
-          console.warn('MeterSnap: HEIC-Konvertierung per heic2any fehlgeschlagen:', heicErr);
+          console.warn('MeterSnap: HEIC-Konvertierung per heic2any fehlgeschlagen, Backend übernimmt:', heicErr);
         }
       }
 
-      this._statusMessage = 'KI liest Zählerstand aus dem Foto...';
+      this._statusMessage = 'KI erkennt Zähler und liest Stand...';
       this._render();
 
       // 1. Extract photo capture date & time from EXIF / file (strips GPS/serials later in canvas)
@@ -284,36 +317,55 @@ class MeterSnapCard extends HTMLElement {
         throw new Error('Datei konnte nicht geladen werden.');
       }
 
+      // We call with meter_type: 'auto' so AI classifies between electricity and gas!
       const resp = await this._callApi('POST', '/api/meter_snap/scan', {
         image: base64Image,
-        meter_type: this._meterType,
+        meter_type: 'auto',
       });
 
       if (!resp || !resp.success) {
         throw new Error(resp?.error || 'Zählerstand konnte nicht erkannt werden.');
       }
 
-      // Open confirmation dialog with the original photo timestamp
+      // If backend converted HEIC to JPEG, use the converted image
+      if (resp.converted_image) {
+        base64Image = resp.converted_image;
+      }
+
+      const detectedType = resp.meter_type === 'gas' ? 'gas' : 'electricity';
+      const detectedUnit = resp.unit || (detectedType === 'electricity' ? 'kWh' : 'm³');
+
+      // Open confirmation dialog with the detected meter type & original photo timestamp
       this._pendingScan = {
+        meter_type: detectedType,
         reading: resp.reading !== undefined ? resp.reading : '',
-        unit: resp.unit || (this._meterType === 'electricity' ? 'kWh' : 'm³'),
+        unit: detectedUnit,
         confidence: resp.confidence || 'high',
-        details: resp.details || '',
+        details: resp.details || (detectedType === 'electricity' ? 'Stromzähler erkannt' : 'Gaszähler erkannt'),
         image: base64Image,
         timestamp: photoDateTime,
-        notes: 'Erfasst via Foto',
+        notes: 'Erfasst via Smart Scan',
+        remainingInQueue: remainingCount,
       };
     } catch (err) {
       alert(`Hinweis: ${err.message}\nDu kannst den Stand auch manuell eintragen.`);
       const nowStr = new Date().toISOString().slice(0, 16);
+      const isRawHeic = base64Image && (
+        base64Image.startsWith('data:image/heic') ||
+        base64Image.startsWith('data:image/heif') ||
+        base64Image.startsWith('data:;base64') ||
+        base64Image.startsWith('data:application/octet-stream')
+      );
       this._pendingScan = {
+        meter_type: this._meterType,
         reading: '',
         unit: this._meterType === 'electricity' ? 'kWh' : 'm³',
         confidence: 'manual',
         details: 'Manuelle Eingabe',
-        image: base64Image || null,
+        image: isRawHeic ? null : (base64Image || null),
         timestamp: photoDateTime || nowStr,
         notes: '',
+        remainingInQueue: remainingCount,
       };
     } finally {
       this._loading = false;
@@ -325,6 +377,7 @@ class MeterSnapCard extends HTMLElement {
   _openManualEntry() {
     const nowStr = new Date().toISOString().slice(0, 16);
     this._pendingScan = {
+      meter_type: this._meterType,
       reading: '',
       unit: this._meterType === 'electricity' ? 'kWh' : 'm³',
       confidence: 'manual',
@@ -332,6 +385,7 @@ class MeterSnapCard extends HTMLElement {
       image: null,
       timestamp: nowStr,
       notes: '',
+      remainingInQueue: 0,
     };
     this._render();
   }
@@ -342,6 +396,7 @@ class MeterSnapCard extends HTMLElement {
     const inputVal = this.shadowRoot.getElementById('confirmReadingInput')?.value;
     const timeVal = this.shadowRoot.getElementById('confirmTimeInput')?.value;
     const notesVal = this.shadowRoot.getElementById('confirmNotesInput')?.value;
+    const meterType = this._pendingScan.meter_type || this._meterType;
 
     const readingNum = parseFloat(inputVal);
     if (isNaN(readingNum) || readingNum < 0) {
@@ -360,7 +415,7 @@ class MeterSnapCard extends HTMLElement {
       }
 
       const payload = {
-        meter_type: this._meterType,
+        meter_type: meterType,
         reading: readingNum,
         timestamp: isoTimestamp,
         image_base64: this._pendingScan.image || null,
@@ -369,8 +424,16 @@ class MeterSnapCard extends HTMLElement {
 
       const resp = await this._callApi('POST', '/api/meter_snap/reading', payload);
       if (resp && resp.success) {
-        this._pendingScan = null;
+        this._meterType = meterType; // Auto-switch tab to the saved meter
         await this._fetchData();
+
+        if (this._fileQueue && this._fileQueue.length > 0) {
+          // Process next photo in batch queue
+          await this._processNextQueuedFile();
+          return;
+        } else {
+          this._pendingScan = null;
+        }
       } else {
         throw new Error(resp?.error || 'Fehler beim Speichern');
       }
@@ -384,6 +447,13 @@ class MeterSnapCard extends HTMLElement {
   }
 
   _cancelPendingScan() {
+    if (this._fileQueue && this._fileQueue.length > 0) {
+      if (confirm('Möchtest du zum nächsten Foto in der Warteschlange springen?')) {
+        this._processNextQueuedFile();
+        return;
+      }
+      this._fileQueue = [];
+    }
     this._pendingScan = null;
     this._render();
   }
@@ -548,6 +618,46 @@ class MeterSnapCard extends HTMLElement {
           background: #ffebee;
           color: #c62828;
         }
+        .badge-elec {
+          background: #e1f5fe;
+          color: #0277bd;
+        }
+        .badge-gas {
+          background: #fff3e0;
+          color: #ef6c00;
+        }
+        .type-switch {
+          display: flex;
+          gap: 8px;
+          margin-top: 4px;
+        }
+        .type-btn {
+          flex: 1;
+          padding: 8px 10px;
+          border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px;
+          background: var(--secondary-background-color, #f0f2f5);
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 0.88rem;
+          color: var(--secondary-text-color, #555);
+          transition: all 0.15s ease;
+        }
+        .type-btn.active {
+          background: var(--primary-color, #03a9f4);
+          color: #fff;
+          border-color: var(--primary-color, #03a9f4);
+          box-shadow: 0 1px 4px rgba(3, 169, 244, 0.3);
+        }
+        .queue-badge {
+          background: #e8f5e9;
+          color: #2e7d32;
+          font-size: 0.8rem;
+          font-weight: 600;
+          padding: 4px 8px;
+          border-radius: 4px;
+          margin-bottom: 10px;
+        }
         .action-bar {
           display: flex;
           gap: 10px;
@@ -571,6 +681,9 @@ class MeterSnapCard extends HTMLElement {
         }
         .btn-capture:hover {
           filter: brightness(0.95);
+        }
+        .btn-smart {
+          background: linear-gradient(135deg, #0288d1 0%, #03a9f4 50%, #ff9800 100%);
         }
         .btn-manual {
           flex: 1;
@@ -801,13 +914,25 @@ class MeterSnapCard extends HTMLElement {
           <div class="modal-card">
             <div class="modal-title">
               <span>🔎 Zählerstand prüfen & bestätigen</span>
-              <span class="badge badge-green">${this._pendingScan.details || 'Erkannt'}</span>
+              <span class="badge ${this._pendingScan.meter_type === 'electricity' ? 'badge-elec' : 'badge-gas'}">
+                ${this._pendingScan.meter_type === 'electricity' ? '⚡ Strom' : '🔥 Gas'} • ${this._pendingScan.details || 'Erkannt'}
+              </span>
             </div>
+            ${this._pendingScan.remainingInQueue > 0 ? `
+              <div class="queue-badge">📋 Noch ${this._pendingScan.remainingInQueue} weiteres Foto in der Warteschlange</div>
+            ` : ''}
             <div class="modal-body">
               ${this._pendingScan.image ? `
                 <img src="${this._pendingScan.image}" class="modal-img-preview" alt="Zähler Vorschau" />
               ` : ''}
               <div class="modal-form">
+                <div class="form-group">
+                  <label>Zählertyp zuordnen:</label>
+                  <div class="type-switch">
+                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'electricity' ? 'active' : ''}" id="btnSwitchElec">⚡ Strom (kWh)</button>
+                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'gas' ? 'active' : ''}" id="btnSwitchGas">🔥 Gas (m³)</button>
+                  </div>
+                </div>
                 <div class="form-group">
                   <label for="confirmReadingInput">Zählerstand (${this._pendingScan.unit}):</label>
                   <input type="number" step="0.001" class="form-input" id="confirmReadingInput" value="${this._pendingScan.reading}" />
@@ -832,9 +957,9 @@ class MeterSnapCard extends HTMLElement {
         <!-- Action Buttons -->
         ${!this._pendingScan && !this._loading ? `
           <div class="action-bar">
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,image/*" capture="environment" class="file-input" id="cameraInput" />
-            <button class="btn-capture" id="btnCapture">
-              📸 Foto aufnehmen / hochladen
+            <input type="file" accept="image/*,.heic,.HEIC,.heif,.HEIF,.jpg,.jpeg,.JPG,.JPEG,.png,.PNG,.webp,.WEBP,image/heic,image/heif" multiple class="file-input" id="cameraInput" />
+            <button class="btn-capture btn-smart" id="btnCapture" title="Zählerfoto aufnehmen oder aus der Galerie wählen (Strom & Gas automatisch erkannt)">
+              📸 Zähler scannen (Universal)
             </button>
             <button class="btn-manual" id="btnManual">
               ✏️ Manuell
@@ -903,12 +1028,28 @@ class MeterSnapCard extends HTMLElement {
     root.getElementById('tabElec')?.addEventListener('click', () => this._setMeterType('electricity'));
     root.getElementById('tabGas')?.addEventListener('click', () => this._setMeterType('gas'));
 
-    // Camera Trigger
+    // Type Switcher inside Confirmation Modal
+    root.getElementById('btnSwitchElec')?.addEventListener('click', () => {
+      if (this._pendingScan) {
+        this._pendingScan.meter_type = 'electricity';
+        this._pendingScan.unit = 'kWh';
+        this._render();
+      }
+    });
+    root.getElementById('btnSwitchGas')?.addEventListener('click', () => {
+      if (this._pendingScan) {
+        this._pendingScan.meter_type = 'gas';
+        this._pendingScan.unit = 'm³';
+        this._render();
+      }
+    });
+
+    // Camera / File Trigger
     const fileInput = root.getElementById('cameraInput');
     root.getElementById('btnCapture')?.addEventListener('click', () => {
       fileInput?.click();
     });
-    fileInput?.addEventListener('change', (e) => this._handleFileSelected(e));
+    fileInput?.addEventListener('change', (e) => this._handleFilesSelected(e));
 
     // Manual Entry Trigger
     root.getElementById('btnManual')?.addEventListener('click', () => this._openManualEntry());
@@ -952,7 +1093,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.11 geladen ',
+  '%c METERSNAP CARD %c Version 1.0.12 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

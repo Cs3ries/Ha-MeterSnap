@@ -2,7 +2,7 @@
 
 DOMAIN = "meter_snap"
 NAME = "MeterSnap"
-VERSION = "1.0.11"
+VERSION = "1.0.12"
 
 # Storage
 STORAGE_KEY = "meter_snap_data"
@@ -12,6 +12,7 @@ IMAGE_DIR = "meter_snap/images"
 # Meter Types
 METER_ELECTRICITY = "electricity"
 METER_GAS = "gas"
+METER_AUTO = "auto"
 METER_TYPES = [METER_ELECTRICITY, METER_GAS]
 
 # OCR Providers

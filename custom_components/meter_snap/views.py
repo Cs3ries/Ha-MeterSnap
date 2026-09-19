@@ -10,7 +10,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, METER_ELECTRICITY, METER_TYPES
+from .const import DOMAIN, METER_AUTO, METER_ELECTRICITY, METER_TYPES
 from .coordinator import MeterSnapCoordinator
 from .ocr_engine import MeterSnapOCREngine
 
@@ -44,8 +44,9 @@ class MeterSnapScanView(HomeAssistantView):
         try:
             content_type = request.content_type or ""
             image_bytes = None
-            meter_type = METER_ELECTRICITY
+            meter_type = METER_AUTO
             mime_type = "image/jpeg"
+            converted_jpeg_b64 = None
 
             if "multipart/form-data" in content_type:
                 reader = await request.multipart()
@@ -58,12 +59,12 @@ class MeterSnapScanView(HomeAssistantView):
                         mime_type = part.headers.get("Content-Type", "image/jpeg")
                     elif part.name == "meter_type":
                         val = await part.text()
-                        if val in METER_TYPES:
+                        if val in METER_TYPES or val == METER_AUTO:
                             meter_type = val
             else:
                 data = await request.json()
                 b64_str = data.get("image", "")
-                meter_type = data.get("meter_type", METER_ELECTRICITY)
+                meter_type = data.get("meter_type", METER_AUTO)
                 if b64_str:
                     if "," in b64_str:
                         header, b64_str = b64_str.split(",", 1)
@@ -79,25 +80,39 @@ class MeterSnapScanView(HomeAssistantView):
                         _LOGGER.warning("Could not decode base64 image: %s", err)
                         image_bytes = None
 
-                # Backend HEIC fallback conversion if pillow_heif is installed
-                if image_bytes and (mime_type == "image/heic" or (len(image_bytes) > 12 and image_bytes[4:8] == b"ftyp")):
-                    try:
-                        import pillow_heif
-                        from PIL import Image
-                        import io
-                        pillow_heif.register_heif_opener()
-                        img = Image.open(io.BytesIO(image_bytes))
-                        out = io.BytesIO()
-                        img.convert("RGB").save(out, format="JPEG", quality=85)
-                        image_bytes = out.getvalue()
-                        mime_type = "image/jpeg"
-                    except Exception as e:
-                        _LOGGER.debug("Backend HEIC conversion fallback not available: %s", e)
-
             if not image_bytes:
                 return self.json({"success": False, "error": "Kein Bild empfangen"}, status_code=400)
 
+            # Backend HEIC fallback conversion if pillow_heif is installed
+            if mime_type == "image/heic" or (len(image_bytes) > 12 and image_bytes[4:8] == b"ftyp"):
+                try:
+                    import pillow_heif
+                    from PIL import Image
+                    import io
+                    pillow_heif.register_heif_opener()
+                    img = Image.open(io.BytesIO(image_bytes))
+                    out = io.BytesIO()
+                    img.convert("RGB").save(out, format="JPEG", quality=85)
+                    image_bytes = out.getvalue()
+                    mime_type = "image/jpeg"
+                    converted_jpeg_b64 = base64.b64encode(image_bytes).decode("utf-8")
+                    _LOGGER.info("Successfully converted HEIC image to JPEG on backend")
+                except ImportError:
+                    _LOGGER.warning("pillow_heif is not installed yet. Home Assistant restart required.")
+                    return self.json({
+                        "success": False,
+                        "error": "HEIC-Foto erkannt: Bitte Home Assistant einmal neu starten, damit die HEIC-Unterstützung aktiv wird (oder das Foto als JPG hochladen)."
+                    }, status_code=400)
+                except Exception as e:
+                    _LOGGER.warning("Backend HEIC conversion failed: %s", e)
+                    return self.json({
+                        "success": False,
+                        "error": f"HEIC-Bild konnte nicht konvertiert werden ({e}). Bitte als JPG hochladen."
+                    }, status_code=400)
+
             result = await ocr_engine.scan_image(image_bytes, meter_type=meter_type, mime_type=mime_type)
+            if converted_jpeg_b64 and isinstance(result, dict):
+                result["converted_image"] = f"data:image/jpeg;base64,{converted_jpeg_b64}"
             return self.json(result)
 
         except Exception as err:

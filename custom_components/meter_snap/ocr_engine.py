@@ -14,6 +14,7 @@ from .const import (
     DEFAULT_CUSTOM_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_OPENAI_MODEL,
+    METER_AUTO,
     METER_ELECTRICITY,
     METER_GAS,
     PROVIDER_CUSTOM,
@@ -24,8 +25,35 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def build_ocr_prompt(meter_type: str) -> str:
-    """Build a specialized prompt for meter reading extraction."""
+def build_ocr_prompt(meter_type: str = METER_AUTO) -> str:
+    """Build a specialized or universal prompt for meter reading extraction."""
+    if meter_type in (None, "", "auto", "universal"):
+        return """Du bist ein präziser Experte für das Auslesen von Zählerständen (Strom- und Gaszähler).
+Analysiere das beigefügte Foto, erkenne selbstständig den Zählertyp und ermittle den exakten aktuellen Zählerstand.
+
+Aufgaben:
+1. ERKENNE DEN ZÄHLERTYP:
+   - "electricity" (Stromzähler): Typische Merkmale: Einheit kWh, Ferraris-Drehscheibe mit schwarzem Rollenzählwerk (ggf. 1 rote Rolle für Nachkommastelle) ODER digitaler LCD-Zähler (mME) mit Kenncode '1.8.0', Drehstrom, Hersteller wie eBZ, EMH, Landis+Gyr.
+   - "gas" (Gaszähler): Typische Merkmale: Einheit m³, Balgen-Gaszähler mit Ziffernrollen im schwarzen Bereich (ganze m³) und rotem Kasten/Rahmen ganz rechts (meist 3 Ziffern für Nachkommastellen), Hersteller wie Elster, Itron, Kromschröder, Pmax, Qmax.
+
+2. ZÄHLERSTAND AUSLESEN:
+   - Falls Stromzähler (analog): Schwarze Rollen = ganze kWh (Vorkomma), rote Rolle ganz rechts (falls vorhanden) = 1 Nachkommastelle (z.B. 12345 auf Schwarz, 6 auf Rot ergibt 12345.6 kWh).
+   - Falls Stromzähler (digital): Suche gezielt nach Kenncode '1.8.0' (Bezug). Ignoriere '2.8.0' (Einspeisung) und Prüfmodi (wie 888888).
+   - Falls Gaszähler: Schwarze Rollen = ganze m³, Rollen im roten Kasten/Rahmen = Nachkommastellen (z.B. 01234 im schwarzen Bereich und 567 im roten Bereich ergibt 1234.567 m³).
+   - Ignoriere Barcodes, Eigentumsnummern, Zählernummern, Baujahr und Warnhinweise.
+
+3. RÜCKGABEFORMAT:
+   Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Objekt ohne Erklärungen und ohne Markdown-Code-Ticks zurück:
+{
+  "meter_type": "electricity" oder "gas",
+  "reading": 12345.67,
+  "integer_part": 12345,
+  "decimal_part": 67,
+  "unit": "kWh" oder "m³",
+  "confidence": "high",
+  "details": "Digitaler Stromzähler (1.8.0) erkannt" oder "Balgen-Gaszähler erkannt"
+}"""
+
     type_desc = "Stromzähler" if meter_type == METER_ELECTRICITY else "Gaszähler"
     unit = "kWh" if meter_type == METER_ELECTRICITY else "m³"
 
@@ -45,6 +73,7 @@ Regeln:
 
 Format:
 {{
+  "meter_type": "{meter_type}",
   "reading": 12345.67,
   "integer_part": 12345,
   "decimal_part": 67,
@@ -77,7 +106,32 @@ def parse_number_str(val: Any) -> float | None:
         return None
 
 
-def clean_json_response(raw_text: str) -> dict[str, Any] | None:
+def infer_meter_type(data: dict[str, Any], text: str = "", requested_type: str = METER_AUTO) -> str:
+    """Determine whether meter is electricity or gas based on response data and text."""
+    val = str(data.get("meter_type", "")).lower().strip()
+    if "gas" in val:
+        return METER_GAS
+    if "elec" in val or "strom" in val:
+        return METER_ELECTRICITY
+
+    unit = str(data.get("unit", "")).lower().strip()
+    if "kwh" in unit:
+        return METER_ELECTRICITY
+    if "m³" in unit or "m3" in unit:
+        return METER_GAS
+
+    low = text.lower()
+    if "gas" in low or "balgen" in low or "m³" in low or "m3" in low:
+        return METER_GAS
+    if "strom" in low or "1.8.0" in low or "ferraris" in low or "kwh" in low:
+        return METER_ELECTRICITY
+
+    if requested_type in (METER_ELECTRICITY, METER_GAS):
+        return requested_type
+    return METER_ELECTRICITY
+
+
+def clean_json_response(raw_text: str, requested_type: str = METER_AUTO) -> dict[str, Any] | None:
     """Extract and parse JSON from model response with fallback strategies."""
     if not raw_text:
         return None
@@ -86,6 +140,12 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
 
     # 1. Remove <think>...</think> reasoning blocks from thinking models (e.g. Ling, DeepSeek, Qwen)
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
+
+    def _finalize(res: dict[str, Any], cand_text: str) -> dict[str, Any]:
+        res["meter_type"] = infer_meter_type(res, cand_text, requested_type)
+        if not res.get("unit"):
+            res["unit"] = "kWh" if res["meter_type"] == METER_ELECTRICITY else "m³"
+        return res
 
     candidates = []
 
@@ -114,7 +174,7 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
                     num = parse_number_str(data["reading"])
                     if num is not None:
                         data["reading"] = num
-                        return data
+                        return _finalize(data, cand_clean)
                 if "integer_part" in data and data["integer_part"] is not None:
                     int_str = str(data["integer_part"]).strip().replace(" ", "")
                     dec_str = str(data.get("decimal_part", "")).strip().replace(" ", "")
@@ -122,7 +182,7 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
                     num = parse_number_str(full_str)
                     if num is not None:
                         data["reading"] = num
-                        return data
+                        return _finalize(data, cand_clean)
         except Exception:
             pass
 
@@ -131,36 +191,36 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
     if roll_match:
         num = parse_number_str(f"{roll_match.group(1)}.{roll_match.group(2)}")
         if num is not None:
-            return {"reading": num, "confidence": "high", "details": "Aus Rollenbeschreibung erkannt"}
+            return _finalize({"reading": num, "confidence": "high", "details": "Aus Rollenbeschreibung erkannt"}, cleaned)
 
     # 5b. Match OBIS 1.8.0 code for digital electricity meters
     obis_match = re.search(r'(?:1\.8\.0|1-0:1\.8\.0)[\s:=*]+([0-9][0-9\.,\s]{1,10}[0-9])', cleaned, re.IGNORECASE)
     if obis_match:
         num = parse_number_str(obis_match.group(1))
         if num is not None:
-            return {"reading": num, "confidence": "high", "details": "Aus OBIS 1.8.0 Kennziffer erkannt"}
+            return _finalize({"reading": num, "confidence": "high", "details": "Aus OBIS 1.8.0 Kennziffer erkannt", "meter_type": METER_ELECTRICITY}, cleaned)
 
     # 6. Regex extraction fallback for "reading": ...
     reading_match = re.search(r'["\']?reading["\']?\s*[:=]\s*["\']?([0-9][0-9\.,\s]*[0-9])["\']?', cleaned, re.IGNORECASE)
     if reading_match:
         num = parse_number_str(reading_match.group(1))
         if num is not None:
-            return {
+            return _finalize({
                 "reading": num,
                 "confidence": "medium",
                 "details": "Per Fallback-Muster aus KI-Antwort extrahiert",
-            }
+            }, cleaned)
 
     # 7. Fallback: search for numbers after German keywords like "Zählerstand ... 47.843,2"
     keyword_match = re.search(r'(?:zählerstand|stand|verbrauch|wert|reading).*?([0-9][0-9\.,\s]{2,10}[0-9])', cleaned, re.IGNORECASE)
     if keyword_match:
         num = parse_number_str(keyword_match.group(1))
         if num is not None:
-            return {
+            return _finalize({
                 "reading": num,
                 "confidence": "medium",
                 "details": "Aus Textantwort extrahiert",
-            }
+            }, cleaned)
 
     # 8. Last-resort fallback: extract any 3-7 digit number (strip OBIS codes first so 1.8.0 is not picked)
     cleaned_for_num = re.sub(r'\b[0-2]\.8\.[0-9]\b', '', cleaned)
@@ -168,11 +228,11 @@ def clean_json_response(raw_text: str) -> dict[str, Any] | None:
     if number_match:
         num = parse_number_str(number_match.group(1))
         if num is not None:
-            return {
+            return _finalize({
                 "reading": num,
                 "confidence": "low",
                 "details": "Zahlenmuster erkannt",
-            }
+            }, cleaned)
 
     _LOGGER.warning("Could not parse meter reading from OCR response: %s", raw_text)
     return None
@@ -198,7 +258,7 @@ class MeterSnapOCREngine:
     async def scan_image(
         self,
         image_bytes: bytes,
-        meter_type: str = METER_ELECTRICITY,
+        meter_type: str = METER_AUTO,
         mime_type: str = "image/jpeg",
     ) -> dict[str, Any]:
         """Send image to selected AI provider and extract meter reading."""
@@ -206,11 +266,11 @@ class MeterSnapOCREngine:
 
         try:
             if self._provider == PROVIDER_GEMINI:
-                return await self._scan_gemini(image_bytes, prompt, mime_type)
+                return await self._scan_gemini(image_bytes, prompt, mime_type, meter_type=meter_type)
             elif self._provider == PROVIDER_OPENAI:
-                return await self._scan_openai(image_bytes, prompt, mime_type)
+                return await self._scan_openai(image_bytes, prompt, mime_type, meter_type=meter_type)
             elif self._provider == PROVIDER_CUSTOM:
-                return await self._scan_custom(image_bytes, prompt, mime_type)
+                return await self._scan_custom(image_bytes, prompt, mime_type, meter_type=meter_type)
             else:
                 return {
                     "success": False,
@@ -225,6 +285,7 @@ class MeterSnapOCREngine:
         image_bytes: bytes,
         prompt: str,
         mime_type: str,
+        meter_type: str = METER_AUTO,
     ) -> dict[str, Any]:
         """Call Google Gemini API."""
         if not self._api_key:
@@ -275,7 +336,7 @@ class MeterSnapOCREngine:
             if not isinstance(raw_text, str):
                 raw_text = str(raw_text)
 
-            parsed = clean_json_response(raw_text)
+            parsed = clean_json_response(raw_text, requested_type=meter_type)
             if parsed:
                 parsed["success"] = True
                 return parsed
@@ -292,6 +353,7 @@ class MeterSnapOCREngine:
         image_bytes: bytes,
         prompt: str,
         mime_type: str,
+        meter_type: str = METER_AUTO,
     ) -> dict[str, Any]:
         """Call OpenAI Vision API."""
         if not self._api_key:
@@ -341,7 +403,7 @@ class MeterSnapOCREngine:
             if not isinstance(raw_text, str):
                 raw_text = str(raw_text)
 
-            parsed = clean_json_response(raw_text)
+            parsed = clean_json_response(raw_text, requested_type=meter_type)
             if parsed:
                 parsed["success"] = True
                 return parsed
@@ -358,6 +420,7 @@ class MeterSnapOCREngine:
         image_bytes: bytes,
         prompt: str,
         mime_type: str,
+        meter_type: str = METER_AUTO,
     ) -> dict[str, Any]:
         """Call Custom / Local OpenAI-compatible Vision API."""
         url = (self._custom_endpoint or "http://localhost:11434/v1/chat/completions").strip()
@@ -453,7 +516,7 @@ class MeterSnapOCREngine:
                     if not isinstance(raw_text, str):
                         raw_text = str(raw_text)
 
-                    parsed = clean_json_response(raw_text)
+                    parsed = clean_json_response(raw_text, requested_type=meter_type)
                     if parsed:
                         parsed["success"] = True
                         return parsed
