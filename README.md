@@ -53,9 +53,12 @@
 
 Im Einrichtungsassistenten legst du deine Werte fest (kann jederzeit unter *Einstellungen $\rightarrow$ Geräte & Dienste $\rightarrow$ MeterSnap $\rightarrow$ Konfigurieren* angepasst werden):
 
-### 1. KI & Bilderkennung
-* **KI-Anbieter**: `Google Gemini` (empfohlen) oder `OpenAI`.
-* **API-Schlüssel**: Trage deinen API-Key ein (z. B. von Google AI Studio oder OpenAI).
+### 1. Wähle deinen KI-Dienst
+* **OpenRouter**: Zugriff auf moderne Vision-Modelle (inkl. kostenloser `:free`-Modelle mit automatischer Modellauswahl).
+* **Lokale KI / Custom**: Verbindung zu lokalem Ollama, LocalAI oder vLLM ohne Cloud.
+* **Google Gemini**: Direkte Anbindung per Google AI Studio API-Key.
+* **OpenAI**: Direkte Anbindung per OpenAI Platform API-Key.
+* **Ohne KI (Manuelle Erfassung)**: Komplett offline ohne KI – Zählerstände direkt manuell im Dashboard erfassen (Fotos bleiben zur Beweissicherung archiviert).
 
 ### 2. Stromvertrag
 * **Stromzähler aktivieren**: Ja / Nein

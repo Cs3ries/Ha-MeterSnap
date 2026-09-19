@@ -2,7 +2,7 @@
 
 DOMAIN = "meter_snap"
 NAME = "MeterSnap"
-VERSION = "1.0.12"
+VERSION = "1.0.13b1"
 
 # Storage
 STORAGE_KEY = "meter_snap_data"
@@ -16,15 +16,21 @@ METER_AUTO = "auto"
 METER_TYPES = [METER_ELECTRICITY, METER_GAS]
 
 # OCR Providers
+PROVIDER_OPENROUTER = "openrouter"
+PROVIDER_CUSTOM = "custom"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_OPENAI = "openai"
-PROVIDER_CUSTOM = "custom"
-OCR_PROVIDERS = [PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_CUSTOM]
+PROVIDER_NONE = "none"
+OCR_PROVIDERS = [PROVIDER_OPENROUTER, PROVIDER_CUSTOM, PROVIDER_GEMINI, PROVIDER_OPENAI, PROVIDER_NONE]
 
-# Default AI Models
+# Default AI Models & Endpoints
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+DEFAULT_OPENROUTER_MODEL = "inclusionai/ling-3.0-flash-vl:free"
 DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_CUSTOM_MODEL = "llava"
+DEFAULT_CUSTOM_ENDPOINT = "http://localhost:11434/v1/chat/completions"
 
 # Configuration Keys - General / AI
 CONF_OCR_PROVIDER = "ocr_provider"

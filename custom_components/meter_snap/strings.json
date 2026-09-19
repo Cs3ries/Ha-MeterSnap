@@ -2,13 +2,58 @@
   "config": {
     "step": {
       "user": {
-        "title": "MeterSnap - KI & Bilderkennung",
-        "description": "Wähle den KI-Dienst für die Ziffernerkennung deiner Zähler.",
+        "title": "MeterSnap - KI-Dienst auswählen",
+        "description": "Wähle den Dienst für die Ziffernerkennung deiner Zählerstände oder nutze die manuelle Erfassung ganz ohne KI:",
+        "menu_options": {
+          "openrouter": "OpenRouter (Kostenlose & Bezahl-Modelle mit Modellauswahl)",
+          "custom": "Lokale KI / Benutzerdefiniert (z.B. lokales Ollama)",
+          "gemini": "Google Gemini (Direkt-API)",
+          "openai": "OpenAI (Direkt-API)",
+          "none": "Ohne KI (Manuelle Erfassung & Foto-Archiv)"
+        }
+      },
+      "openrouter": {
+        "title": "MeterSnap - OpenRouter einrichten",
+        "description": "OpenRouter bietet Zugriff auf viele Vision-Modelle (inklusive kostenloser Varianten).\n\nTrage deinen OpenRouter API-Schlüssel ein (oder lasse ihn für reine Free-Modelle leer).",
         "data": {
-          "ocr_provider": "KI-Anbieter",
-          "api_key": "API-Schlüssel (Gemini oder OpenAI)",
-          "custom_endpoint": "Benutzerdefinierter Endpunkt (z.B. lokales Ollama)",
-          "custom_model": "Modellname"
+          "api_key": "OpenRouter API-Schlüssel (optional bei Free-Modellen)"
+        }
+      },
+      "openrouter_model": {
+        "title": "MeterSnap - OpenRouter Modell wählen",
+        "description": "Wähle das gewünschte Vision-Modell. Kostenlose Modelle sind mit ✨ markiert und stehen ganz oben.\n\nFalls dein Wunschmodell nicht in der Liste ist, wähle 'Anderes Modell manuell eingeben...' und trage den Modellnamen unten ein.",
+        "data": {
+          "openrouter_model_select": "Vision-Modell auswählen",
+          "custom_model": "Eigenen Modellnamen eintragen (optional)"
+        }
+      },
+      "custom": {
+        "title": "MeterSnap - Lokale KI / Eigener Endpunkt",
+        "description": "Verbinde einen lokalen OpenAI-kompatiblen Server (z.B. lokales Ollama mit LLaVA / Qwen2-VL). Für lokale Instanzen ohne Passwort kann das API-Key-Feld leer bleiben.",
+        "data": {
+          "custom_endpoint": "API-Endpunkt URL",
+          "custom_model": "Modellname",
+          "api_key": "API-Schlüssel (optional)"
+        }
+      },
+      "gemini": {
+        "title": "MeterSnap - Google Gemini einrichten",
+        "description": "Verbindet die Google Gemini Vision API. Ein API-Schlüssel kann im Google AI Studio (aistudio.google.com) erstellt werden.",
+        "data": {
+          "api_key": "Google Gemini API-Schlüssel"
+        },
+        "error": {
+          "empty_api_key": "Bitte gib einen gültigen API-Schlüssel ein."
+        }
+      },
+      "openai": {
+        "title": "MeterSnap - OpenAI einrichten",
+        "description": "Verbindet die offizielle OpenAI Vision API (z.B. GPT-4o-mini). Ein API-Schlüssel aus dem OpenAI Dashboard (platform.openai.com) ist erforderlich.",
+        "data": {
+          "api_key": "OpenAI API-Schlüssel"
+        },
+        "error": {
+          "empty_api_key": "Bitte gib einen gültigen API-Schlüssel ein."
         }
       },
       "electricity": {
@@ -38,23 +83,83 @@
   "options": {
     "step": {
       "init": {
-        "title": "MeterSnap Einstellungen anpassen",
-        "description": "Tarife, Preise, Abschläge oder KI-Schlüssel aktualisieren.",
+        "title": "MeterSnap Einstellungen",
+        "description": "Wähle den Bereich, den du anpassen möchtest:",
+        "menu_options": {
+          "provider_select": "KI-Dienst & Erkennung anpassen",
+          "electricity": "Stromvertrag anpassen",
+          "gas": "Gasvertrag anpassen"
+        }
+      },
+      "provider_select": {
+        "title": "KI-Dienst auswählen",
+        "description": "Wähle den gewünschten Dienst oder wechsle zur manuellen Erfassung:",
+        "menu_options": {
+          "opt_openrouter": "OpenRouter",
+          "opt_custom": "Lokale KI / Benutzerdefiniert",
+          "opt_gemini": "Google Gemini",
+          "opt_openai": "OpenAI",
+          "opt_none": "Ohne KI (Manuelle Erfassung)"
+        }
+      },
+      "opt_openrouter": {
+        "title": "OpenRouter konfigurieren",
+        "description": "OpenRouter API-Schlüssel und Vision-Modell anpassen.",
         "data": {
-          "ocr_provider": "KI-Anbieter",
-          "api_key": "API-Schlüssel",
-          "custom_endpoint": "Benutzerdefinierter Endpunkt",
+          "api_key": "OpenRouter API-Schlüssel",
+          "openrouter_model_select": "Modell auswählen",
+          "custom_model": "Eigenen Modellnamen eintragen (optional)"
+        }
+      },
+      "opt_custom": {
+        "title": "Lokale KI / Custom konfigurieren",
+        "description": "Endpunkt, Modellname und API-Schlüssel für lokalen Server anpassen.",
+        "data": {
+          "custom_endpoint": "API-Endpunkt URL",
           "custom_model": "Modellname",
+          "api_key": "API-Schlüssel (optional)"
+        }
+      },
+      "opt_gemini": {
+        "title": "Google Gemini konfigurieren",
+        "description": "Google Gemini API-Schlüssel anpassen.",
+        "data": {
+          "api_key": "Google Gemini API-Schlüssel"
+        },
+        "error": {
+          "empty_api_key": "Bitte gib einen gültigen API-Schlüssel ein."
+        }
+      },
+      "opt_openai": {
+        "title": "OpenAI konfigurieren",
+        "description": "OpenAI API-Schlüssel anpassen.",
+        "data": {
+          "api_key": "OpenAI API-Schlüssel"
+        },
+        "error": {
+          "empty_api_key": "Bitte gib einen gültigen API-Schlüssel ein."
+        }
+      },
+      "electricity": {
+        "title": "Stromvertrag anpassen",
+        "description": "Arbeitspreis, Grundpreis und monatlichen Abschlag für Strom anpassen.",
+        "data": {
           "electricity_enabled": "Stromzähler aktivieren",
-          "electricity_unit_price": "Strom Arbeitspreis (€/kWh)",
-          "electricity_base_price": "Strom Grundpreis (€/Monat)",
-          "electricity_monthly_payment": "Strom Abschlag (€)",
+          "electricity_unit_price": "Arbeitspreis (€/kWh)",
+          "electricity_base_price": "Grundpreis (€/Monat)",
+          "electricity_monthly_payment": "Monatlicher Abschlag (€)"
+        }
+      },
+      "gas": {
+        "title": "Gasvertrag anpassen",
+        "description": "Arbeitspreis, Grundpreis, Abschlag, Brennwert und Z-Zahl für Gas anpassen.",
+        "data": {
           "gas_enabled": "Gaszähler aktivieren",
-          "gas_unit_price": "Gas Arbeitspreis (€/kWh)",
-          "gas_base_price": "Gas Grundpreis (€/Monat)",
-          "gas_monthly_payment": "Gas Abschlag (€)",
-          "gas_calorific_value": "Gas Brennwert (kWh/m³)",
-          "gas_conversion_factor": "Gas Zustandszahl Z"
+          "gas_unit_price": "Arbeitspreis (€/kWh)",
+          "gas_base_price": "Grundpreis (€/Monat)",
+          "gas_monthly_payment": "Monatlicher Abschlag (€)",
+          "gas_calorific_value": "Brennwert (kWh/m³)",
+          "gas_conversion_factor": "Zustandszahl Z"
         }
       }
     }

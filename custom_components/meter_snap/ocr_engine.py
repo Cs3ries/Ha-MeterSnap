@@ -14,12 +14,16 @@ from .const import (
     DEFAULT_CUSTOM_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_OPENAI_MODEL,
+    DEFAULT_OPENROUTER_MODEL,
     METER_AUTO,
     METER_ELECTRICITY,
     METER_GAS,
+    OPENROUTER_API_URL,
     PROVIDER_CUSTOM,
     PROVIDER_GEMINI,
+    PROVIDER_NONE,
     PROVIDER_OPENAI,
+    PROVIDER_OPENROUTER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -265,11 +269,22 @@ class MeterSnapOCREngine:
         prompt = build_ocr_prompt(meter_type)
 
         try:
-            if self._provider == PROVIDER_GEMINI:
+            if self._provider == PROVIDER_NONE:
+                m_type = meter_type if meter_type in (METER_ELECTRICITY, METER_GAS) else METER_ELECTRICITY
+                return {
+                    "success": True,
+                    "manual": True,
+                    "meter_type": m_type,
+                    "reading": "",
+                    "unit": "kWh" if m_type == METER_ELECTRICITY else "m³",
+                    "confidence": "manual",
+                    "details": "Manuelle Erfassung (ohne KI)",
+                }
+            elif self._provider == PROVIDER_GEMINI:
                 return await self._scan_gemini(image_bytes, prompt, mime_type, meter_type=meter_type)
             elif self._provider == PROVIDER_OPENAI:
                 return await self._scan_openai(image_bytes, prompt, mime_type, meter_type=meter_type)
-            elif self._provider == PROVIDER_CUSTOM:
+            elif self._provider in (PROVIDER_CUSTOM, PROVIDER_OPENROUTER):
                 return await self._scan_custom(image_bytes, prompt, mime_type, meter_type=meter_type)
             else:
                 return {
@@ -422,12 +437,15 @@ class MeterSnapOCREngine:
         mime_type: str,
         meter_type: str = METER_AUTO,
     ) -> dict[str, Any]:
-        """Call Custom / Local OpenAI-compatible Vision API."""
-        url = (self._custom_endpoint or "http://localhost:11434/v1/chat/completions").strip()
+        """Call Custom / Local / OpenRouter OpenAI-compatible Vision API."""
+        default_endpoint = OPENROUTER_API_URL if self._provider == PROVIDER_OPENROUTER else "http://localhost:11434/v1/chat/completions"
+        default_model = DEFAULT_OPENROUTER_MODEL if self._provider == PROVIDER_OPENROUTER else DEFAULT_CUSTOM_MODEL
+
+        url = (self._custom_endpoint or default_endpoint).strip()
         if "openroueter.ai" in url:
             url = url.replace("openroueter.ai", "openrouter.ai")
 
-        model = (self._custom_model or DEFAULT_CUSTOM_MODEL).strip()
+        model = (self._custom_model or default_model).strip()
         if "openroueter" in model:
             model = model.replace("openroueter", "openrouter")
 

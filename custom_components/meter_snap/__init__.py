@@ -17,7 +17,7 @@ from .const import (
     CONF_OCR_PROVIDER,
     DEFAULT_CUSTOM_MODEL,
     DOMAIN,
-    PROVIDER_GEMINI,
+    PROVIDER_OPENROUTER,
 )
 from .coordinator import MeterSnapCoordinator
 from .ocr_engine import MeterSnapOCREngine
@@ -78,7 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if entry.options:
         cfg.update(entry.options)
 
-    provider = cfg.get(CONF_OCR_PROVIDER, PROVIDER_GEMINI)
+    provider = cfg.get(CONF_OCR_PROVIDER, PROVIDER_OPENROUTER)
     api_key = cfg.get(CONF_API_KEY, "")
     custom_endpoint = cfg.get(CONF_CUSTOM_ENDPOINT, "")
     custom_model = cfg.get(CONF_CUSTOM_MODEL, DEFAULT_CUSTOM_MODEL)

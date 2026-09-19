@@ -2,18 +2,147 @@
   "config": {
     "step": {
       "user": {
-        "title": "MeterSnap - AI & OCR Settings",
-        "description": "Choose the AI service for meter reading extraction.",
+        "title": "MeterSnap - Select AI Service",
+        "description": "Choose the service for optical meter reading extraction, or choose manual entry without AI:",
+        "menu_options": {
+          "openrouter": "OpenRouter (Free & Paid Models with Model Selection)",
+          "custom": "Local AI / Custom (e.g. local Ollama)",
+          "gemini": "Google Gemini (Direct API)",
+          "openai": "OpenAI (Direct API)",
+          "none": "Without AI (Manual Entry & Photo Archive)"
+        }
+      },
+      "openrouter": {
+        "title": "MeterSnap - Configure OpenRouter",
+        "description": "OpenRouter provides access to many Vision models (including free models).\n\nEnter your OpenRouter API key (or leave it empty for free models).",
         "data": {
-          "ocr_provider": "AI Provider",
-          "api_key": "API Key (Gemini or OpenAI)",
-          "custom_endpoint": "Custom Endpoint (e.g. local Ollama)",
-          "custom_model": "Model Name"
+          "api_key": "OpenRouter API Key (optional for free models)"
+        }
+      },
+      "openrouter_model": {
+        "title": "MeterSnap - Select OpenRouter Model",
+        "description": "Select your desired Vision model. Free models are marked with ✨ and listed at the top.\n\nIf your model is not listed, choose 'Enter custom model manually...' and type its ID below.",
+        "data": {
+          "openrouter_model_select": "Select Vision Model",
+          "custom_model": "Custom Model ID (optional)"
+        }
+      },
+      "custom": {
+        "title": "MeterSnap - Local AI / Custom Endpoint",
+        "description": "Connect a local OpenAI-compatible server (e.g. local Ollama with LLaVA or Qwen2-VL). For local instances without authentication, leave the API key empty.",
+        "data": {
+          "custom_endpoint": "API Endpoint URL",
+          "custom_model": "Model Name",
+          "api_key": "API Key (optional)"
+        }
+      },
+      "gemini": {
+        "title": "MeterSnap - Configure Google Gemini",
+        "description": "Connects Google Gemini Vision API. An API key can be generated at Google AI Studio (aistudio.google.com).",
+        "data": {
+          "api_key": "Google Gemini API Key"
+        },
+        "error": {
+          "empty_api_key": "Please enter a valid API key."
+        }
+      },
+      "openai": {
+        "title": "MeterSnap - Configure OpenAI",
+        "description": "Connects official OpenAI Vision API (e.g. GPT-4o-mini). An API key from OpenAI Dashboard (platform.openai.com) is required.",
+        "data": {
+          "api_key": "OpenAI API Key"
+        },
+        "error": {
+          "empty_api_key": "Please enter a valid API key."
         }
       },
       "electricity": {
         "title": "MeterSnap - Electricity Tariff",
         "description": "Configure your electricity contract values.",
+        "data": {
+          "electricity_enabled": "Enable Electricity Meter",
+          "electricity_unit_price": "Unit Price (€/kWh, e.g. 0.32)",
+          "electricity_base_price": "Base Price (€/month, e.g. 12.00)",
+          "electricity_monthly_payment": "Monthly Advance Payment (€, e.g. 90.00)"
+        }
+      },
+      "gas": {
+        "title": "MeterSnap - Gas Tariff",
+        "description": "Configure your gas contract values (from your gas bill).",
+        "data": {
+          "gas_enabled": "Enable Gas Meter",
+          "gas_unit_price": "Unit Price (€/kWh, e.g. 0.10)",
+          "gas_base_price": "Base Price (€/month, e.g. 10.00)",
+          "gas_monthly_payment": "Monthly Advance Payment (€, e.g. 110.00)",
+          "gas_calorific_value": "Calorific Value (Brennwert kWh/m³, e.g. 11.2)",
+          "gas_conversion_factor": "Volume Conversion Factor (Zustandszahl Z, e.g. 0.95)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MeterSnap Settings",
+        "description": "Select the area you want to configure:",
+        "menu_options": {
+          "provider_select": "AI Service & Recognition",
+          "electricity": "Electricity Tariff",
+          "gas": "Gas Tariff"
+        }
+      },
+      "provider_select": {
+        "title": "Select AI Service",
+        "description": "Choose your AI service or switch to manual entry:",
+        "menu_options": {
+          "opt_openrouter": "OpenRouter",
+          "opt_custom": "Local AI / Custom",
+          "opt_gemini": "Google Gemini",
+          "opt_openai": "OpenAI",
+          "opt_none": "Without AI (Manual Entry)"
+        }
+      },
+      "opt_openrouter": {
+        "title": "Configure OpenRouter",
+        "description": "Configure OpenRouter API key and Vision model.",
+        "data": {
+          "api_key": "OpenRouter API Key",
+          "openrouter_model_select": "Select Model",
+          "custom_model": "Custom Model ID (optional)"
+        }
+      },
+      "opt_custom": {
+        "title": "Configure Local AI / Custom",
+        "description": "Configure endpoint, model name and API key for local server.",
+        "data": {
+          "custom_endpoint": "API Endpoint URL",
+          "custom_model": "Model Name",
+          "api_key": "API Key (optional)"
+        }
+      },
+      "opt_gemini": {
+        "title": "Configure Google Gemini",
+        "description": "Update Google Gemini API key.",
+        "data": {
+          "api_key": "Google Gemini API Key"
+        },
+        "error": {
+          "empty_api_key": "Please enter a valid API key."
+        }
+      },
+      "opt_openai": {
+        "title": "Configure OpenAI",
+        "description": "Update OpenAI API key.",
+        "data": {
+          "api_key": "OpenAI API Key"
+        },
+        "error": {
+          "empty_api_key": "Please enter a valid API key."
+        }
+      },
+      "electricity": {
+        "title": "Configure Electricity Tariff",
+        "description": "Adjust unit price, base price and monthly payment for electricity.",
         "data": {
           "electricity_enabled": "Enable Electricity Meter",
           "electricity_unit_price": "Unit Price (€/kWh)",
@@ -22,39 +151,15 @@
         }
       },
       "gas": {
-        "title": "MeterSnap - Gas Tariff",
-        "description": "Configure your gas contract values (from your gas bill).",
+        "title": "Configure Gas Tariff",
+        "description": "Adjust unit price, base price, advance payment, calorific value and Z-factor for gas.",
         "data": {
           "gas_enabled": "Enable Gas Meter",
           "gas_unit_price": "Unit Price (€/kWh)",
           "gas_base_price": "Base Price (€/month)",
           "gas_monthly_payment": "Monthly Advance Payment (€)",
-          "gas_calorific_value": "Calorific Value (Brennwert kWh/m³)",
-          "gas_conversion_factor": "Volume Conversion Factor (Zustandszahl Z)"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Update MeterSnap Settings",
-        "description": "Adjust tariffs, prices, advance payments or AI keys.",
-        "data": {
-          "ocr_provider": "AI Provider",
-          "api_key": "API Key",
-          "custom_endpoint": "Custom Endpoint",
-          "custom_model": "Model Name",
-          "electricity_enabled": "Enable Electricity Meter",
-          "electricity_unit_price": "Electricity Unit Price (€/kWh)",
-          "electricity_base_price": "Electricity Base Price (€/month)",
-          "electricity_monthly_payment": "Electricity Monthly Payment (€)",
-          "gas_enabled": "Enable Gas Meter",
-          "gas_unit_price": "Gas Unit Price (€/kWh)",
-          "gas_base_price": "Gas Base Price (€/month)",
-          "gas_monthly_payment": "Gas Monthly Payment (€)",
-          "gas_calorific_value": "Gas Calorific Value (kWh/m³)",
-          "gas_conversion_factor": "Gas Conversion Factor (Z)"
+          "gas_calorific_value": "Calorific Value (kWh/m³)",
+          "gas_conversion_factor": "Volume Conversion Factor (Z)"
         }
       }
     }
