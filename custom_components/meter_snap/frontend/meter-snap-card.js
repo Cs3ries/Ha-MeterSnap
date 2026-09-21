@@ -17,7 +17,6 @@ class MeterSnapCard extends HTMLElement {
     this._statusMessage = '';
     this._pendingScan = null; // Holds scan result for confirmation
     this._fileQueue = []; // Queue for multi-file batch upload
-    this._previewModalImage = null;
   }
 
   set hass(hass) {
@@ -418,7 +417,6 @@ class MeterSnapCard extends HTMLElement {
         meter_type: meterType,
         reading: readingNum,
         timestamp: isoTimestamp,
-        image_base64: this._pendingScan.image || null,
         notes: notesVal || '',
       };
 
@@ -467,16 +465,6 @@ class MeterSnapCard extends HTMLElement {
     } catch (err) {
       alert(`Fehler beim Löschen: ${err.message}`);
     }
-  }
-
-  _openImageModal(imgFile) {
-    this._previewModalImage = `/api/meter_snap/image/${imgFile}`;
-    this._render();
-  }
-
-  _closeImageModal() {
-    this._previewModalImage = null;
-    this._render();
   }
 
   _formatDate(isoStr) {
@@ -815,14 +803,6 @@ class MeterSnapCard extends HTMLElement {
           border-bottom: 1px solid var(--divider-color, #eee);
           vertical-align: middle;
         }
-        .thumb {
-          width: 36px;
-          height: 36px;
-          object-fit: cover;
-          border-radius: 4px;
-          cursor: pointer;
-          border: 1px solid #ddd;
-        }
         .btn-del {
           background: none;
           border: none;
@@ -836,34 +816,6 @@ class MeterSnapCard extends HTMLElement {
           padding: 24px 10px;
           color: var(--secondary-text-color, #888);
           font-size: 0.95rem;
-        }
-        .lightbox-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0,0,0,0.85);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-        }
-        .lightbox-img {
-          max-width: 90vw;
-          max-height: 85vh;
-          border-radius: 8px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-        .lightbox-close {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-          color: #fff;
-          font-size: 2rem;
-          cursor: pointer;
-          background: none;
-          border: none;
         }
       </style>
 
@@ -979,7 +931,6 @@ class MeterSnapCard extends HTMLElement {
               <thead>
                 <tr>
                   <th>Datum</th>
-                  <th>Foto</th>
                   <th>Stand (${unit})</th>
                   <th>Verbrauch</th>
                   <th>Kosten</th>
@@ -990,11 +941,6 @@ class MeterSnapCard extends HTMLElement {
                 ${this._readings.map(r => `
                   <tr>
                     <td>${this._formatDate(r.timestamp)}</td>
-                    <td>
-                      ${r.image_file ? `
-                        <img src="/api/meter_snap/image/${r.image_file}" class="thumb" data-img="${r.image_file}" title="Vergrößern" />
-                      ` : '-'}
-                    </td>
                     <td><b>${r.reading}</b></td>
                     <td>${r.consumption > 0 ? `+${r.consumption} ${unit}` : '-'}</td>
                     <td>${r.cost > 0 ? `${r.cost.toFixed(2)} €` : '-'}</td>
@@ -1007,14 +953,6 @@ class MeterSnapCard extends HTMLElement {
             </table>
           `}
         </div>
-
-        <!-- Lightbox Zoom Modal -->
-        ${this._previewModalImage ? `
-          <div class="lightbox-backdrop" id="lightbox">
-            <button class="lightbox-close" id="lightboxClose">&times;</button>
-            <img src="${this._previewModalImage}" class="lightbox-img" alt="Zählerfoto Großansicht" />
-          </div>
-        ` : ''}
       </ha-card>
     `;
 
@@ -1065,18 +1003,6 @@ class MeterSnapCard extends HTMLElement {
         if (id) this._deleteEntry(id);
       });
     });
-
-    // Thumbnails Zoom
-    root.querySelectorAll('.thumb').forEach(img => {
-      img.addEventListener('click', () => {
-        const file = img.getAttribute('data-img');
-        if (file) this._openImageModal(file);
-      });
-    });
-
-    // Lightbox Close
-    root.getElementById('lightbox')?.addEventListener('click', () => this._closeImageModal());
-    root.getElementById('lightboxClose')?.addEventListener('click', () => this._closeImageModal());
   }
 }
 
@@ -1093,7 +1019,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.0.12 geladen ',
+  '%c METERSNAP CARD %c Version 1.1.1-b1 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

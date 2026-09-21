@@ -23,7 +23,6 @@ from .coordinator import MeterSnapCoordinator
 from .ocr_engine import MeterSnapOCREngine
 from .views import (
     MeterSnapConfigView,
-    MeterSnapImageView,
     MeterSnapReadingView,
     MeterSnapScanView,
 )
@@ -63,7 +62,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # Register API views
     hass.http.register_view(MeterSnapScanView)
     hass.http.register_view(MeterSnapReadingView)
-    hass.http.register_view(MeterSnapImageView)
     hass.http.register_view(MeterSnapConfigView)
 
     return True

@@ -1,7 +1,6 @@
 """Data Coordinator and Storage for MeterSnap."""
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 import logging
 import os
@@ -74,25 +73,56 @@ class MeterSnapCoordinator:
         return cfg
 
     async def async_setup(self) -> None:
-        """Load stored readings and initialize image directory."""
-        # Ensure image directory exists
-        if not os.path.exists(self._image_dir):
-            await self.hass.async_add_executor_job(
-                lambda: os.makedirs(self._image_dir, exist_ok=True)
-            )
-
+        """Load stored readings, migrate legacy records, and clean up stored images."""
         data = await self._store.async_load()
+        needs_save = False
         if data and isinstance(data, dict):
             for meter_type in METER_TYPES:
                 items = data.get(meter_type, [])
+                for item in items:
+                    if item.get("image_file") is not None:
+                        item["image_file"] = None
+                        needs_save = True
                 self._readings[meter_type] = items
                 self._recalculate_metrics(meter_type)
+
+        if needs_save:
+            await self._async_save()
+            _LOGGER.info("MeterSnap: Migrated legacy readings, cleared image_file references")
+
+        # Clean up legacy images directory if present
+        await self._async_cleanup_legacy_images()
 
         _LOGGER.info(
             "MeterSnap coordinator loaded: %d electricity readings, %d gas readings",
             len(self._readings[METER_ELECTRICITY]),
             len(self._readings[METER_GAS]),
         )
+
+    async def _async_cleanup_legacy_images(self) -> None:
+        """Remove any previously saved meter photos to reclaim disk space."""
+        if not os.path.exists(self._image_dir):
+            return
+
+        def _cleanup():
+            try:
+                for fname in os.listdir(self._image_dir):
+                    fpath = os.path.join(self._image_dir, fname)
+                    if os.path.isfile(fpath):
+                        try:
+                            os.remove(fpath)
+                            _LOGGER.debug("Removed legacy meter photo: %s", fpath)
+                        except Exception as err:
+                            _LOGGER.warning("Could not remove legacy photo %s: %s", fpath, err)
+                try:
+                    os.rmdir(self._image_dir)
+                    _LOGGER.info("Removed empty legacy image directory: %s", self._image_dir)
+                except Exception:
+                    pass
+            except Exception as err:
+                _LOGGER.warning("Error during legacy image cleanup in %s: %s", self._image_dir, err)
+
+        await self.hass.async_add_executor_job(_cleanup)
 
     def register_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Register entity update listener."""
@@ -120,23 +150,19 @@ class MeterSnapCoordinator:
         image_base64: str | None = None,
         notes: str = "",
     ) -> dict[str, Any]:
-        """Add a new reading, save image, and recompute metrics."""
+        """Add a new reading and recompute metrics."""
         if meter_type not in METER_TYPES:
             raise ValueError(f"Ungültiger Zählertyp: {meter_type}")
 
         if not timestamp_str:
             timestamp_str = datetime.now(timezone.utc).isoformat()
 
-        image_filename = None
-        if image_base64:
-            image_filename = await self._async_save_image(image_base64, meter_type)
-
         entry_id = str(uuid.uuid4())
         entry = {
             "id": entry_id,
             "timestamp": timestamp_str,
             "reading": round(float(reading), 3),
-            "image_file": image_filename,
+            "image_file": None,
             "notes": notes,
         }
 
@@ -157,29 +183,12 @@ class MeterSnapCoordinator:
             return False
 
         original_count = len(self._readings[meter_type])
-        deleted_entry = None
-        remaining = []
-
-        for item in self._readings[meter_type]:
-            if item.get("id") == entry_id:
-                deleted_entry = item
-            else:
-                remaining.append(item)
+        remaining = [item for item in self._readings[meter_type] if item.get("id") != entry_id]
 
         if len(remaining) == original_count:
             return False
 
         self._readings[meter_type] = remaining
-
-        # Optionally delete associated image file
-        if deleted_entry and deleted_entry.get("image_file"):
-            img_path = os.path.join(self._image_dir, deleted_entry["image_file"])
-            if os.path.exists(img_path):
-                try:
-                    await self.hass.async_add_executor_job(lambda: os.remove(img_path))
-                except Exception as err:
-                    _LOGGER.warning("Could not delete image %s: %s", img_path, err)
-
         self._recalculate_metrics(meter_type)
         await self._async_save()
         self._notify_listeners()
@@ -314,25 +323,3 @@ class MeterSnapCoordinator:
     async def _async_save(self) -> None:
         """Save readings to persistent storage."""
         await self._store.async_save(self._readings)
-
-    async def _async_save_image(self, image_base64: str, meter_type: str) -> str:
-        """Save base64 image data to a file."""
-        # Strip data URL prefix if present
-        if "," in image_base64:
-            image_base64 = image_base64.split(",", 1)[1]
-
-        image_bytes = base64.b64decode(image_base64)
-        now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{now_str}_{meter_type}_{uuid.uuid4().hex[:6]}.jpg"
-        target_path = os.path.join(self._image_dir, filename)
-
-        def _write():
-            with open(target_path, "wb") as f:
-                f.write(image_bytes)
-
-        await self.hass.async_add_executor_job(_write)
-        return filename
-
-    def get_image_path(self, filename: str) -> str:
-        """Return the absolute path for an image file."""
-        return os.path.join(self._image_dir, filename)

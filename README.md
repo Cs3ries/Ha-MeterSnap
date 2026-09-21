@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.0)
+[![version](https://img.shields.io/badge/version-1.1.1--b1-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.1-b1)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -20,7 +20,7 @@
   * **Lokale KI / Custom**: 100% lokale Bilderkennung mit Ollama (z.B. LLaVA, Qwen2-VL), LocalAI oder vLLM ohne Cloud.
   * **Google Gemini**: Direkte Anbindung per Google AI Studio API-Schlüssel.
   * **OpenAI**: Direkte Anbindung per OpenAI Platform API-Schlüssel (z.B. GPT-4o-mini).
-  * **Ohne KI (Manuelle Erfassung)**: Komplett offline ohne externe Server. Zählerstände selbst tippen, Beweisfotos bleiben im Archiv sicher gespeichert.
+  * **Ohne KI (Manuelle Erfassung)**: Komplett offline ohne externe Server. Zählerstände selbst eintippen.
 * 📦 **Batch-Upload**: Mehrere Zählerfotos auf einmal hochladen und nacheinander prüfen und speichern.
 * 🍏 **Automatische iPhone HEIC-Konvertierung**: Lädt iPhone-Fotos (HEIC/HEIF) direkt hoch und konvertiert sie serverseitig verlustfrei in JPEG.
 * 🔍 **Sofort-Vorschau & Korrektur-Dialog**: Du siehst das Foto direkt neben der erkannten Zahl und kannst sie vor dem Speichern mit einem Fingertipp prüfen oder korrigieren.
@@ -34,8 +34,8 @@
 * 📊 **Abschlags-Prognose (Ampel)**:
   * Rechnet deinen aktuellen Tagesverbrauch auf den Monat hoch.
   * Zeigt an, ob dein monatlicher Abschlag ausreicht oder ob eine Nachzahlung droht.
-* 🖼️ **Beweisfoto-Archiv**:
-  * Jedes Foto wird dauerhaft mit Zeitstempel und Zählerstand gespeichert. Ein Klick auf die Miniaturansicht öffnet das Foto in voller Auflösung (perfekt als Nachweis bei der Jahresablesung!).
+* 🖼️ **Datenschutzfreundliche Foto-Prüfung (Kein Festspeicher-Ballast)**:
+  * Das Zählerfoto wird direkt im Browser-Bestätigungsdialog neben dem erkannten Wert angezeigt, damit du das Originalfoto vor dem Speichern in Ruhe vergleichen kannst. Nach der Bestätigung wird das Foto verworfen und belegt keinen dauerhaften Speicherplatz in Home Assistant.
 * 🌿 **Home Assistant Energy Dashboard**:
   * Erstellt native Entitäten (`sensor.meter_snap_strom_stand`, `sensor.meter_snap_gas_stand`, `sensor.meter_snap_gas_energie_stand`) mit `state_class: total_increasing`, die direkt im offiziellen HA Energie-Dashboard hinterlegt werden können.
 
@@ -134,7 +134,9 @@ default_meter: electricity
 
 ## 🔒 Datenschutz & Speicherung
 
-* Alle Zählerstände, Messwerte, Kostenberechnungen und Bilddateien verbleiben **vollständig lokal** auf deinem Home-Assistant-System (unter `/config/meter_snap/`).
+**Update-Hinweis für v1.1.1-b1:** Beim Start werden bereits gespeicherte Fotos unter `/config/meter_snap/images` gelöscht und ihre Verknüpfungen aus den Messwerten entfernt. Benötigte Beweisfotos vor dem Update separat sichern. Zählerstände bleiben erhalten.
+
+* Alle Zählerstände, Messwerte und Kostenberechnungen verbleiben **vollständig lokal** auf deinem Home-Assistant-System (unter `.storage`). Es werden **keine Zählerfotos dauerhaft auf der Festplatte gespeichert** – dies spart wertvollen Speicherplatz und schützt deine Privatsphäre.
 * **Bei lokaler KI (Ollama) oder manueller Erfassung:** Es verlässt zu keinem Zeitpunkt ein Byte dein lokales Heimnetzwerk.
 * **Bei Cloud-Diensten (OpenRouter, Gemini, OpenAI):** Das Foto wird ausschließlich bei einem Scan-Vorgang über eine verschlüsselte HTTPS-Verbindung an die gewählte API übermittelt, um die Ziffern auszulesen. Es werden keinerlei persönliche Nutzerdaten übertragen.
 

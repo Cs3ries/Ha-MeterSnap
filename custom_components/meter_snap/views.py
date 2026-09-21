@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 from typing import Any
 
 from aiohttp import web
@@ -156,14 +155,12 @@ class MeterSnapReadingView(HomeAssistantView):
             meter_type = body.get("meter_type", METER_ELECTRICITY)
             reading_val = float(body.get("reading"))
             timestamp = body.get("timestamp")
-            image_base64 = body.get("image_base64")
             notes = body.get("notes", "")
 
             entry = await coordinator.async_add_reading(
                 meter_type=meter_type,
                 reading=reading_val,
                 timestamp_str=timestamp,
-                image_base64=image_base64,
                 notes=notes,
             )
 
@@ -192,30 +189,6 @@ class MeterSnapReadingView(HomeAssistantView):
         readings = coordinator.get_readings(meter_type)
 
         return self.json({"success": success, "readings": readings, "kpis": kpis})
-
-
-class MeterSnapImageView(HomeAssistantView):
-    """View to securely serve saved meter reading photos."""
-
-    url = "/api/meter_snap/image/{filename}"
-    name = "api:meter_snap:image"
-    requires_auth = True
-
-    async def get(self, request: web.Request, filename: str) -> web.Response:
-        """Serve the requested image file."""
-        res = get_coordinator_and_ocr(request.app["hass"])
-        if not res:
-            return web.Response(status=500, text="MeterSnap nicht initialisiert")
-
-        coordinator, _ = res
-        # Basic sanitization
-        safe_filename = os.path.basename(filename)
-        img_path = coordinator.get_image_path(safe_filename)
-
-        if not os.path.isfile(img_path):
-            return web.Response(status=404, text="Bild nicht gefunden")
-
-        return web.FileResponse(img_path)
 
 
 class MeterSnapConfigView(HomeAssistantView):
