@@ -20,6 +20,7 @@ from .const import (
     PROVIDER_OPENROUTER,
 )
 from .coordinator import MeterSnapCoordinator
+from .frontend_setup import async_register_card
 from .ocr_engine import MeterSnapOCREngine
 from .views import (
     MeterSnapConfigView,
@@ -58,6 +59,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 cache_headers=False,
             )
         _LOGGER.debug("Registered MeterSnap frontend static path: %s", frontend_dir)
+
+    await async_register_card(hass)
 
     # Register API views
     hass.http.register_view(MeterSnapScanView)

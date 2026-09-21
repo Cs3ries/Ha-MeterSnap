@@ -1,13 +1,20 @@
 {
   "domain": "meter_snap",
   "name": "MeterSnap",
-  "codeowners": ["@Cs3ries"],
+  "codeowners": [
+    "@Cs3ries"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Cs3ries/Ha-MeterSnap",
   "integration_type": "hub",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Cs3ries/Ha-MeterSnap/issues",
-  "dependencies": ["http"],
-  "requirements": ["pillow-heif>=0.18.0"],
-  "version": "1.1.1-b2"
+  "dependencies": [
+    "http",
+    "lovelace"
+  ],
+  "requirements": [
+    "pillow-heif>=0.18.0"
+  ],
+  "version": "1.1.1-b3"
 }
