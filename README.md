@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.1--b3-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.1-b3)
+[![version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.2)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -116,9 +116,9 @@ title: Zählerstand & Verbrauch
 default_meter: electricity
 ```
 
-**Automatisch ab v1.1.1-b3:** Bei über die Oberfläche verwalteten Dashboard-Ressourcen registriert MeterSnap die Karte beim Start selbst. Bestehende lokale Einträge für `meter-snap-card.js` werden auf die aktuelle Versions-URL umgestellt und doppelte Einträge zusammengeführt. Nach einem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Die Karte selbst platzierst du weiterhin im gewünschten Dashboard.
+**Automatisch ab v1.1.2:** Bei über die Oberfläche verwalteten Dashboard-Ressourcen registriert MeterSnap die Karte beim Start selbst. Bestehende lokale Einträge für `meter-snap-card.js` werden auf die aktuelle Versions-URL umgestellt und doppelte Einträge zusammengeführt. Nach einem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Die Karte selbst platzierst du weiterhin im gewünschten Dashboard.
 
-**YAML-Ressourcen:** Diese bleiben manuell verwaltet. Verwende `/meter_snap_frontend/meter-snap-card.js?v=1.1.1-b3` mit `type: module` und aktualisiere die Versionsangabe nach Updates. MeterSnap verändert keine YAML-Dateien.
+**YAML-Ressourcen:** Diese bleiben manuell verwaltet. Verwende `/meter_snap_frontend/meter-snap-card.js?v=1.1.2` mit `type: module` und aktualisiere die Versionsangabe nach Updates. MeterSnap verändert keine YAML-Dateien.
 
 ---
 
@@ -136,7 +136,7 @@ default_meter: electricity
 
 ## 🔒 Datenschutz & Speicherung
 
-**Update-Hinweis für v1.1.1-b3:** Beim Start werden bereits gespeicherte Fotos unter `/config/meter_snap/images` gelöscht und ihre Verknüpfungen aus den Messwerten entfernt. Benötigte Beweisfotos vor dem Update separat sichern. Zählerstände bleiben erhalten.
+**Update-Hinweis für v1.1.2:** Beim Start werden bereits gespeicherte Fotos unter `/config/meter_snap/images` gelöscht und ihre Verknüpfungen aus den Messwerten entfernt. Benötigte Beweisfotos vor dem Update separat sichern. Zählerstände bleiben erhalten.
 
 * Alle Zählerstände, Messwerte und Kostenberechnungen verbleiben **vollständig lokal** auf deinem Home-Assistant-System (unter `.storage`). Es werden **keine Zählerfotos dauerhaft auf der Festplatte gespeichert** – dies spart wertvollen Speicherplatz und schützt deine Privatsphäre.
 * **Bei lokaler KI (Ollama) oder manueller Erfassung:** Es verlässt zu keinem Zeitpunkt ein Byte dein lokales Heimnetzwerk.
