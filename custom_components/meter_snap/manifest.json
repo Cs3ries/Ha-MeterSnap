@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/Cs3ries/Ha-MeterSnap/issues",
   "dependencies": ["http"],
   "requirements": ["pillow-heif>=0.18.0"],
-  "version": "1.1.1-b1"
+  "version": "1.1.1-b2"
 }
