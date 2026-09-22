@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.1.4-b1
+ * Version 1.1.4-b2
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
@@ -11,11 +11,21 @@ const METER_SNAP_METRICS = { reading: 'Aktueller Stand', consumption: 'Letzter V
 const meterSnapEscape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 function meterSnapConfig(config) {
   const list = (value, allowed) => Array.isArray(value) ? [...new Set(value.filter(key => Object.prototype.hasOwnProperty.call(allowed, key)))] : Object.keys(allowed);
+  const sections = list(config.sections, METER_SNAP_SECTIONS);
+  const metrics = list(config.metrics, METER_SNAP_METRICS);
+  // Remember positions independently of visibility, including disabled items.
+  const order = (value, selected, labels) => [...new Set([
+    ...(Array.isArray(value) ? list(value, labels) : selected), ...Object.keys(labels)
+  ])];
+  const sectionOrder = order(config.sections_order, sections, METER_SNAP_SECTIONS);
+  const metricOrder = order(config.metrics_order, metrics, METER_SNAP_METRICS);
   return { ...config, title: config.title ?? 'MeterSnap',
     default_meter: config.default_meter === 'gas' ? 'gas' : 'electricity',
-    meter: ['electricity', 'gas'].includes(config.meter) ? config.meter : 'switchable',
-    sections: list(config.sections, METER_SNAP_SECTIONS),
-    metrics: list(config.metrics, METER_SNAP_METRICS),
+    meter: ['electricity', 'gas', 'both'].includes(config.meter) ? config.meter : 'switchable',
+    sections: sectionOrder.filter(key => sections.includes(key)),
+    metrics: metricOrder.filter(key => metrics.includes(key)),
+    sections_order: sectionOrder,
+    metrics_order: metricOrder,
     history_page_size: Math.max(1, Math.min(50, Math.trunc(Number(config.history_page_size) || 5))),
     compact: config.compact === true };
 }
@@ -39,6 +49,7 @@ class MeterSnapCard extends HTMLElement {
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
+    this.shadowRoot.querySelectorAll('meter-snap-card').forEach(card => { card.hass = hass; });
 
     // Initial fetch once hass is available
     if (!oldHass && hass) {
@@ -62,7 +73,8 @@ class MeterSnapCard extends HTMLElement {
 
   setConfig(config) {
     this._config = meterSnapConfig(config);
-    this._meterType = this._config.meter === 'switchable' ? this._config.default_meter : this._config.meter;
+    this._requestId++;
+    this._meterType = ['gas', 'electricity'].includes(this._config.meter) ? this._config.meter : this._config.default_meter;
     this._page = 0;
     this._render();
     if (this._hass) this._fetchData();
@@ -71,6 +83,7 @@ class MeterSnapCard extends HTMLElement {
   static getConfigElement() { return document.createElement('meter-snap-card-editor'); }
 
   getCardSize() {
+    if (this._config?.meter === 'both') return [...this.shadowRoot.querySelectorAll('meter-snap-card')].reduce((sum, card) => sum + card.getCardSize(), 1);
     return this._config?.sections.reduce((size, section) => size + ({header: 1, kpis: 2, capture: 1, history: 1 + this._config.history_page_size}[section]), 0) || 1;
   }
 
@@ -82,7 +95,7 @@ class MeterSnapCard extends HTMLElement {
   }
 
   async _fetchData() {
-    if (!this._hass || !this._config) return;
+    if (!this._hass || !this._config || this._config.meter === 'both') return;
     const requestId = ++this._requestId;
     const meterType = this._meterType;
     try {
@@ -497,8 +510,38 @@ class MeterSnapCard extends HTMLElement {
     }
   }
 
+  _renderBoth() {
+    // Each meter keeps its own readings, pagination and pending input.
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display:block; color:var(--primary-text-color); font-family:var(--ha-font-family, sans-serif); }
+        .both-title { font-size:1.25rem; font-weight:600; margin:0 0 12px; overflow-wrap:anywhere; }
+        .meters { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap:12px; }
+        .meter { min-width:0; }
+        .meter-label { font-size:1rem; margin:0 0 8px; }
+      </style>
+      ${this._config.sections.includes('header') && this._config.title ? `<div class="both-title">${meterSnapEscape(this._config.title)}</div>` : ''}
+      <div class="meters"></div>`;
+    const container = this.shadowRoot.querySelector('.meters');
+    for (const [meter, title] of [['electricity', 'Strom'], ['gas', 'Gas']]) {
+      const section = document.createElement('section');
+      section.className = 'meter';
+      section.setAttribute('aria-label', title);
+      // Retain a meter label even if the optional card header is hidden.
+      if (!this._config.sections.includes('header')) {
+        const label = document.createElement('h3');
+        label.className = 'meter-label'; label.textContent = title; section.append(label);
+      }
+      const card = document.createElement('meter-snap-card');
+      card.setConfig({...this._config, meter, title});
+      section.append(card); container.append(section);
+      if (this._hass) card.hass = this._hass;
+    }
+  }
+
   _render() {
     if (!this._config) return;
+    if (this._config.meter === 'both') { this._renderBoth(); return; }
     const pages = Math.max(1, Math.ceil(this._readings.length / this._config.history_page_size));
     this._page = Math.min(this._page, pages - 1);
     const visibleReadings = this._readings.slice(this._page * this._config.history_page_size, (this._page + 1) * this._config.history_page_size);
@@ -1069,11 +1112,10 @@ class MeterSnapCardEditor extends HTMLElement {
   _render() {
     if (!this._config) return;
     const cfg = this._config;
-    const rows = (field, labels) => [...cfg[field], ...Object.keys(labels).filter(key => !cfg[field].includes(key))].map(key => {
-      const index = cfg[field].indexOf(key);
-      return `<div class="row"><label><input type="checkbox" data-list="${field}" value="${key}" ${index >= 0 ? 'checked' : ''}> ${labels[key]}</label>
+    const rows = (field, labels) => cfg[`${field}_order`].map((key, index) => {
+      return `<div class="row"><label><input type="checkbox" data-list="${field}" value="${key}" ${cfg[field].includes(key) ? 'checked' : ''}> ${labels[key]}</label>
         <button type="button" data-field="${field}" data-key="${key}" data-step="-1" ${index <= 0 ? 'disabled' : ''} aria-label="${labels[key]} nach oben">↑</button>
-        <button type="button" data-field="${field}" data-key="${key}" data-step="1" ${index < 0 || index === cfg[field].length - 1 ? 'disabled' : ''} aria-label="${labels[key]} nach unten">↓</button></div>`;
+        <button type="button" data-field="${field}" data-key="${key}" data-step="1" ${index === cfg[`${field}_order`].length - 1 ? 'disabled' : ''} aria-label="${labels[key]} nach unten">↓</button></div>`;
     }).join('');
     this.shadowRoot.innerHTML = `<style>
       :host { display:block; color:var(--primary-text-color); }
@@ -1086,10 +1128,11 @@ class MeterSnapCardEditor extends HTMLElement {
       p { color:var(--secondary-text-color); font-size:.9em; }
     </style>
     <label class="field">Titel<input id="title" type="text" value="${meterSnapEscape(cfg.title)}"></label>
-    <label class="field">Zähler<select id="meter">
-      <option value="switchable">Strom und Gas umschaltbar</option><option value="electricity">Nur Strom</option><option value="gas">Nur Gas</option>
+    <label class="field">Zähleranzeige<select id="meter">
+      <option value="electricity">Nur Strom</option><option value="gas">Nur Gas</option><option value="switchable">Beide – mit Umschalter</option><option value="both">Beide – gleichzeitig sichtbar</option>
     </select></label>
     ${cfg.meter === 'switchable' ? '<label class="field">Beim Öffnen anzeigen<select id="default_meter"><option value="electricity">Strom</option><option value="gas">Gas</option></select></label>' : ''}
+    ${cfg.meter === 'both' ? '<p>Strom und Gas werden getrennt nebeneinander angezeigt; auf schmalen Karten untereinander. Die ausgewählten Bereiche und Kennzahlen gelten für beide.</p>' : ''}
     <label><input id="compact" type="checkbox" ${cfg.compact ? 'checked' : ''}> Kompakte Darstellung</label>
     <fieldset><legend>Bereiche und Reihenfolge</legend>${rows('sections', METER_SNAP_SECTIONS)}</fieldset>
     ${cfg.meter === 'switchable' && !cfg.sections.includes('header') ? '<p>Ohne Titelbereich wird nur der beim Öffnen gewählte Zähler angezeigt. Für eine feste Zählerkarte oben „Nur Strom“ oder „Nur Gas“ wählen.</p>' : ''}
@@ -1109,17 +1152,20 @@ class MeterSnapCardEditor extends HTMLElement {
     }
     this.shadowRoot.querySelectorAll('[data-list]').forEach(input => input.addEventListener('change', () => {
       const field = input.dataset.list;
-      this._config[field] = input.checked ? [...this._config[field], input.value] : this._config[field].filter(key => key !== input.value);
+      const selected = new Set(this._config[field]);
+      if (input.checked) selected.add(input.value); else selected.delete(input.value);
+      this._config[field] = this._config[`${field}_order`].filter(key => selected.has(key));
       this._emit(); this._render();
     }));
     this.shadowRoot.querySelectorAll('[data-step]').forEach(button => button.addEventListener('click', () => {
       const field = button.dataset.field;
-      const list = [...this._config[field]];
+      const list = [...this._config[`${field}_order`]];
       const index = list.indexOf(button.dataset.key);
       const next = index + Number(button.dataset.step);
       if (index < 0 || next < 0 || next >= list.length) return;
       [list[index], list[next]] = [list[next], list[index]];
-      this._config[field] = list;
+      this._config[`${field}_order`] = list;
+      this._config[field] = list.filter(key => this._config[field].includes(key));
       this._emit(); this._render();
     }));
   }
@@ -1139,7 +1185,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.1.4-b1 geladen ',
+  '%c METERSNAP CARD %c Version 1.1.4-b2 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

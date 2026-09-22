@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.4--b1-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b1)
+[![version](https://img.shields.io/badge/version-1.1.4--b2-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b2)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -128,11 +128,13 @@ Die Karte verwendet für Lesen, Speichern, Löschen und Foto-Scans den Home-Assi
 
 ## Modulare Karten ab v1.1.4-b1
 
+**Neu in v1.1.4-b2:** Strom und Gas lassen sich gleichzeitig anzeigen. Abgewählte Bereiche und Kennzahlen behalten ihre Reihenfolge, auch nach Speichern und erneutem Aktivieren.
+
 Unter **Dashboard bearbeiten → Karte hinzufügen → MeterSnap Card** steht ein visueller Editor bereit. Für bestehende Karten öffne **Bearbeiten** und gegebenenfalls **Visuellen Editor anzeigen**.
 
-- **Bereiche:** Titel/Zählerauswahl, Kennzahlen, Erfassung und Historie einzeln einblenden und mit den Pfeilen sortieren.
+- **Bereiche:** Titel/Zählerauswahl, Kennzahlen, Erfassung und Historie einzeln einblenden und mit den Pfeilen sortieren. Abgewählte Bereiche und Kennzahlen behalten ihre Position im Editor und erscheinen beim erneuten Anwählen wieder an derselben Stelle. Nur die Pfeiltasten ändern die Reihenfolge.
 - **Kennzahlen:** Stand, Verbrauch, Kosten und Monatsprognose einzeln auswählen und sortieren.
-- **Zähler:** Nur Strom, nur Gas oder umschaltbar; beim Umschalten lässt sich der Startzähler festlegen.
+- **Zähleranzeige:** Nur Strom, nur Gas, beide mit Umschalter oder beide gleichzeitig. Bei gleichzeitiger Anzeige stehen die Zähler je nach Kartenbreite neben- oder untereinander, mit eigener Erfassung und eigener Historienseite. Beim Umschalten lässt sich der Startzähler festlegen.
 - **Historie:** Standardmäßig fünf Ablesungen pro Seite, einstellbar von 1 bis 50. Zurück/Weiter öffnet weitere Einträge.
 - **Kompakt:** Reduzierte Abstände für kleine Karten. Farben orientieren sich am HA-Theme.
 
@@ -157,9 +159,11 @@ metrics:
 history_page_size: 5
 ```
 
+`meter: both` zeigt Strom und Gas gleichzeitig; `meter: switchable` verwendet den Umschalter. `sections_order` und `metrics_order` speichern die vollständige Reihenfolge einschließlich abgewählter Elemente.
+
 Eine separate Historie verwendet `sections: [header, history]`. Ohne `sections` oder `metrics` werden alle jeweiligen Bausteine angezeigt. Eine leere Liste blendet sie vollständig aus. Bei umschaltbaren Karten liegt die Zählerauswahl im Titelbereich.
 
-Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b1` aktualisieren.
+Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b2` aktualisieren.
 
 ---
 
