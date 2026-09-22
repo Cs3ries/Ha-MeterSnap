@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.4--b4-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b4)
+[![version](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -102,7 +102,7 @@ Der neue Assistent führt dich Schritt für Schritt durch das Setup:
 
 ---
 
-## Eigenes Energie-Dashboard mit Foto-Upload (optional, ab v1.1.4-b3)
+## Eigenes Energie-Dashboard mit Foto-Upload (optional, ab v1.1.4)
 
 Am Ende der Ersteinrichtung kannst du **Kompakte Übersicht mit Foto-Upload anzeigen** aktivieren. Bei einer bestehenden Installation findest du dieselbe Option unter **Einstellungen → Geräte & Dienste → MeterSnap → Konfigurieren → Energie-Dashboard & Foto-Upload**.
 
@@ -138,13 +138,13 @@ default_meter: electricity
 
 ---
 
-## Authentifizierung ab v1.1.4-b1
+## Authentifizierung ab v1.1.4
 
 Die Karte verwendet für Lesen, Speichern, Löschen und Foto-Scans den Home-Assistant-Aufruf `hass.callApi`. Die bisherige manuelle Tokenübernahme entfällt. Dadurch übernimmt Home Assistant die Authentifizierung einschließlich Token-Erneuerung. Nach dem Update Home Assistant neu starten und alle geöffneten Dashboard-Seiten neu laden, damit keine alte Kartenversion weiter Anfragen sendet.
 
-## Modulare Karten ab v1.1.4-b1
+## Modulare Karten ab v1.1.4
 
-**Neu in v1.1.4-b2:** Strom und Gas lassen sich gleichzeitig anzeigen. Abgewählte Bereiche und Kennzahlen behalten ihre Reihenfolge, auch nach Speichern und erneutem Aktivieren.
+**Neu in v1.1.4:** Strom und Gas lassen sich gleichzeitig anzeigen. Abgewählte Bereiche und Kennzahlen behalten ihre Reihenfolge, auch nach Speichern und erneutem Aktivieren.
 
 Unter **Dashboard bearbeiten → Karte hinzufügen → MeterSnap Card** steht ein visueller Editor bereit. Für bestehende Karten öffne **Bearbeiten** und gegebenenfalls **Visuellen Editor anzeigen**.
 
