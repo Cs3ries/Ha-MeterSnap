@@ -79,10 +79,10 @@
         }
       },
       "dashboard": {
-        "title": "MeterSnap energy dashboard",
-        "description": "Optionally add “MeterSnap Energie” to the sidebar: photo upload and manual readings alongside Home Assistant energy charts. Uses your existing energy sources; configure them under Settings → Dashboards → Energy. You can edit the cards in the dashboard. Disabling this option hides the page and preserves its layout. Manage this page here in MeterSnap, not in the list of manually created dashboards.",
+        "title": "Optional compact energy overview",
+        "description": "The optional “MeterSnap Energie” page provides a compact overview with photo upload and manual readings alongside your energy charts. The full Home Assistant Energy dashboard remains available.\n\n**Included:** Meter capture, date selection, electricity and/or gas consumption charts for your enabled meters, and an energy sources table. Other views such as solar, battery storage, individual devices, and CO₂ are not included in this template.\n\n**Shared data, separate layout:** The charts use the same configured energy sources and statistics as the HA Energy dashboard. Date selection, cards, and layout are independent. Changes to the standard dashboard and new HA dashboard features are not copied automatically.\n\n**Before you start:** Configure energy sources under Settings → Dashboards → Energy. A new photo reading updates the meter value; charts reflect the change after HA processes the statistics. Occasional readings do not provide measured daily or hourly consumption.\n\n**Customize and manage:** Change cards using “Edit dashboard”. Enable or disable this additional page here in MeterSnap. Disabling it preserves your layout. You can also enable the page later.",
         "data": {
-          "energy_dashboard": "Enable MeterSnap energy dashboard"
+          "energy_dashboard": "Show compact overview with photo upload"
         }
       }
     }
@@ -171,10 +171,10 @@
         }
       },
       "dashboard": {
-        "title": "MeterSnap energy dashboard",
-        "description": "Optionally add “MeterSnap Energie” to the sidebar: photo upload and manual readings alongside Home Assistant energy charts. Uses your existing energy sources; configure them under Settings → Dashboards → Energy. You can edit the cards in the dashboard. Disabling this option hides the page and preserves its layout. Manage this page here in MeterSnap, not in the list of manually created dashboards.",
+        "title": "Optional compact energy overview",
+        "description": "The optional “MeterSnap Energie” page provides a compact overview with photo upload and manual readings alongside your energy charts. The full Home Assistant Energy dashboard remains available.\n\n**Included:** Meter capture, date selection, electricity and/or gas consumption charts for your enabled meters, and an energy sources table. Other views such as solar, battery storage, individual devices, and CO₂ are not included in this template.\n\n**Shared data, separate layout:** The charts use the same configured energy sources and statistics as the HA Energy dashboard. Date selection, cards, and layout are independent. Changes to the standard dashboard and new HA dashboard features are not copied automatically.\n\n**Before you start:** Configure energy sources under Settings → Dashboards → Energy. A new photo reading updates the meter value; charts reflect the change after HA processes the statistics. Occasional readings do not provide measured daily or hourly consumption.\n\n**Customize and manage:** Change cards using “Edit dashboard”. Enable or disable this additional page here in MeterSnap. Disabling it preserves your layout. You can also enable the page later.",
         "data": {
-          "energy_dashboard": "Enable MeterSnap energy dashboard"
+          "energy_dashboard": "Show compact overview with photo upload"
         }
       }
     }

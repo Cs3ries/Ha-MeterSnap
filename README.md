@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.4--b3-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b3)
+[![version](https://img.shields.io/badge/version-1.1.4--b4-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b4)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -104,9 +104,11 @@ Der neue Assistent führt dich Schritt für Schritt durch das Setup:
 
 ## Eigenes Energie-Dashboard mit Foto-Upload (optional, ab v1.1.4-b3)
 
-Am Ende der Ersteinrichtung kannst du **MeterSnap-Energie-Dashboard anlegen / anzeigen** aktivieren. Bei einer bestehenden Installation findest du dieselbe Option unter **Einstellungen → Geräte & Dienste → MeterSnap → Konfigurieren → Energie-Dashboard & Foto-Upload**.
+Am Ende der Ersteinrichtung kannst du **Kompakte Übersicht mit Foto-Upload anzeigen** aktivieren. Bei einer bestehenden Installation findest du dieselbe Option unter **Einstellungen → Geräte & Dienste → MeterSnap → Konfigurieren → Energie-Dashboard & Foto-Upload**.
 
-Die zusätzliche Seite **MeterSnap Energie** erscheint in der Seitenleiste unter `/meter-snap-energy`. Sie kombiniert die Foto-/manuelle Erfassung mit den offiziellen HA-Energiekarten und deren Datumsauswahl. Beim ersten Anlegen werden die aktivierten Strom-/Gaszähler berücksichtigt.
+Die zusätzliche Seite **MeterSnap Energie** erscheint in der Seitenleiste unter `/meter-snap-energy`. Sie ist eine kompakte Übersicht mit Foto-/manueller Erfassung, Datumsauswahl, Strom-/Gasverbrauchsdiagrammen und Energiequellen-Tabelle. Beim ersten Anlegen werden die aktivierten Strom-/Gaszähler berücksichtigt. PV-, Batterie-, Geräte- und CO₂-Ansichten gehören nicht zu dieser Vorlage; das vollständige eingebaute Energie-Dashboard bleibt verfügbar.
+
+Beide Dashboards verwenden dieselben konfigurierten Energiequellen und Statistiken. Zeitraum, Karten und Anordnung sind unabhängig. Layoutänderungen und neue Funktionen des Standard-Dashboards werden nicht automatisch übernommen. Neue Ablesungen erscheinen in den Diagrammen erst nach Verarbeitung durch die HA-Statistik.
 
 Die Diagramme verwenden die bereits eingerichteten HA-Energiequellen. Falls diese noch fehlen, führt ein Link zu den Energieeinstellungen. MeterSnap ändert die Energiequellen nicht automatisch. Einzelne Fotoablesungen liefern keinen gemessenen Tagesverlauf; alte Ablesungen werden nicht nachträglich in die HA-Energiestatistik verteilt.
 
@@ -177,7 +179,7 @@ history_page_size: 5
 
 Eine separate Historie verwendet `sections: [header, history]`. Ohne `sections` oder `metrics` werden alle jeweiligen Bausteine angezeigt. Eine leere Liste blendet sie vollständig aus. Bei umschaltbaren Karten liegt die Zählerauswahl im Titelbereich.
 
-Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b3` aktualisieren.
+Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b4` aktualisieren.
 
 ---
 

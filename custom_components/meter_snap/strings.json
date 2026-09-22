@@ -79,10 +79,10 @@
         }
       },
       "dashboard": {
-        "title": "MeterSnap-Energie-Dashboard",
-        "description": "Optional „MeterSnap Energie“ in der Seitenleiste anzeigen: Foto-Upload und manuelle Ablesung zusammen mit den Home-Assistant-Energiediagrammen. Verwendet deine bestehenden Energiequellen; diese richtest du unter Einstellungen → Dashboards → Energie ein. Die Karten kannst du im Dashboard bearbeiten. Ausschalten blendet die Seite aus und erhält dein Layout. Diese Seite verwaltest du hier in MeterSnap, nicht in der Liste manuell angelegter Dashboards.",
+        "title": "Optionale kompakte Energieübersicht",
+        "description": "Die optionale Seite „MeterSnap Energie“ bietet eine kompakte Übersicht mit Foto-Upload und manueller Ablesung direkt neben deiner Energieauswertung. Das vollständige Home-Assistant-Energie-Dashboard bleibt weiterhin verfügbar.\n\n**Enthalten:** Zählererfassung, Datumsauswahl, Strom- und/oder Gasverbrauchsdiagramm passend zu den aktivierten Zählern sowie eine Energiequellen-Tabelle. Weitere Ansichten wie PV, Batteriespeicher, einzelne Geräte und CO₂ sind in dieser Vorlage nicht enthalten.\n\n**Gemeinsame Daten, eigenes Layout:** Die Diagramme verwenden dieselben eingerichteten Energiequellen und Statistiken wie das HA-Energie-Dashboard. Zeitraum, Karten und Anordnung sind jedoch unabhängig. Änderungen am Standard-Dashboard und neue HA-Dashboard-Funktionen werden nicht automatisch übernommen.\n\n**Vor dem Start:** Energiequellen unter Einstellungen → Dashboards → Energie einrichten. Eine neue Fotoablesung aktualisiert den Zählerstand; in den Diagrammen erscheint die Änderung erst nach Verarbeitung durch die HA-Statistik. Einzelne Ablesungen liefern keinen gemessenen Tages- oder Stundenverlauf.\n\n**Anpassen und verwalten:** Karten über „Dashboard bearbeiten“ ändern. Diese zusätzliche Seite wird hier in MeterSnap ein- oder ausgeschaltet. Beim Ausschalten bleibt dein Layout gespeichert. Du kannst die Seite auch später aktivieren.",
         "data": {
-          "energy_dashboard": "MeterSnap-Energie-Dashboard anlegen / anzeigen"
+          "energy_dashboard": "Kompakte Übersicht mit Foto-Upload anzeigen"
         }
       }
     }
@@ -171,10 +171,10 @@
         }
       },
       "dashboard": {
-        "title": "MeterSnap-Energie-Dashboard",
-        "description": "Optional „MeterSnap Energie“ in der Seitenleiste anzeigen: Foto-Upload und manuelle Ablesung zusammen mit den Home-Assistant-Energiediagrammen. Verwendet deine bestehenden Energiequellen; diese richtest du unter Einstellungen → Dashboards → Energie ein. Die Karten kannst du im Dashboard bearbeiten. Ausschalten blendet die Seite aus und erhält dein Layout. Diese Seite verwaltest du hier in MeterSnap, nicht in der Liste manuell angelegter Dashboards.",
+        "title": "Optionale kompakte Energieübersicht",
+        "description": "Die optionale Seite „MeterSnap Energie“ bietet eine kompakte Übersicht mit Foto-Upload und manueller Ablesung direkt neben deiner Energieauswertung. Das vollständige Home-Assistant-Energie-Dashboard bleibt weiterhin verfügbar.\n\n**Enthalten:** Zählererfassung, Datumsauswahl, Strom- und/oder Gasverbrauchsdiagramm passend zu den aktivierten Zählern sowie eine Energiequellen-Tabelle. Weitere Ansichten wie PV, Batteriespeicher, einzelne Geräte und CO₂ sind in dieser Vorlage nicht enthalten.\n\n**Gemeinsame Daten, eigenes Layout:** Die Diagramme verwenden dieselben eingerichteten Energiequellen und Statistiken wie das HA-Energie-Dashboard. Zeitraum, Karten und Anordnung sind jedoch unabhängig. Änderungen am Standard-Dashboard und neue HA-Dashboard-Funktionen werden nicht automatisch übernommen.\n\n**Vor dem Start:** Energiequellen unter Einstellungen → Dashboards → Energie einrichten. Eine neue Fotoablesung aktualisiert den Zählerstand; in den Diagrammen erscheint die Änderung erst nach Verarbeitung durch die HA-Statistik. Einzelne Ablesungen liefern keinen gemessenen Tages- oder Stundenverlauf.\n\n**Anpassen und verwalten:** Karten über „Dashboard bearbeiten“ ändern. Diese zusätzliche Seite wird hier in MeterSnap ein- oder ausgeschaltet. Beim Ausschalten bleibt dein Layout gespeichert. Du kannst die Seite auch später aktivieren.",
         "data": {
-          "energy_dashboard": "MeterSnap-Energie-Dashboard anlegen / anzeigen"
+          "energy_dashboard": "Kompakte Übersicht mit Foto-Upload anzeigen"
         }
       }
     }
