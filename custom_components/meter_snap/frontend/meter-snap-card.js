@@ -1,10 +1,24 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.0.12
+ * Version 1.1.4-b1
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
  */
+
+const METER_SNAP_SECTIONS = { header: 'Titel & Zählerauswahl', kpis: 'Kennzahlen', capture: 'Erfassung', history: 'Historie' };
+const METER_SNAP_METRICS = { reading: 'Aktueller Stand', consumption: 'Letzter Verbrauch', cost: 'Letzte Kosten', projection: 'Monatsprognose' };
+const meterSnapEscape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+function meterSnapConfig(config) {
+  const list = (value, allowed) => Array.isArray(value) ? [...new Set(value.filter(key => Object.prototype.hasOwnProperty.call(allowed, key)))] : Object.keys(allowed);
+  return { ...config, title: config.title ?? 'MeterSnap',
+    default_meter: config.default_meter === 'gas' ? 'gas' : 'electricity',
+    meter: ['electricity', 'gas'].includes(config.meter) ? config.meter : 'switchable',
+    sections: list(config.sections, METER_SNAP_SECTIONS),
+    metrics: list(config.metrics, METER_SNAP_METRICS),
+    history_page_size: Math.max(1, Math.min(50, Math.trunc(Number(config.history_page_size) || 5))),
+    compact: config.compact === true };
+}
 
 class MeterSnapCard extends HTMLElement {
   constructor() {
@@ -17,6 +31,9 @@ class MeterSnapCard extends HTMLElement {
     this._statusMessage = '';
     this._pendingScan = null; // Holds scan result for confirmation
     this._fileQueue = []; // Queue for multi-file batch upload
+    this._page = 0;
+    this._requestId = 0;
+    this._onDataChanged = () => this._fetchData();
   }
 
   set hass(hass) {
@@ -29,20 +46,32 @@ class MeterSnapCard extends HTMLElement {
     }
   }
 
-  setConfig(config) {
-    this._config = {
-      title: 'MeterSnap',
-      default_meter: 'electricity',
-      ...config,
-    };
-    if (config.default_meter) {
-      this._meterType = config.default_meter;
-    }
-    this._render();
+  connectedCallback() {
+    window.addEventListener('meter-snap-data-changed', this._onDataChanged);
+    if (this._hass) this._fetchData();
+    this._refreshTimer = window.setInterval(() => {
+      if (!document.hidden) this._fetchData();
+    }, 30000);
   }
 
+  disconnectedCallback() {
+    window.removeEventListener('meter-snap-data-changed', this._onDataChanged);
+    window.clearInterval(this._refreshTimer);
+    this._requestId++;
+  }
+
+  setConfig(config) {
+    this._config = meterSnapConfig(config);
+    this._meterType = this._config.meter === 'switchable' ? this._config.default_meter : this._config.meter;
+    this._page = 0;
+    this._render();
+    if (this._hass) this._fetchData();
+  }
+
+  static getConfigElement() { return document.createElement('meter-snap-card-editor'); }
+
   getCardSize() {
-    return 6;
+    return this._config?.sections.reduce((size, section) => size + ({header: 1, kpis: 2, capture: 1, history: 1 + this._config.history_page_size}[section]), 0) || 1;
   }
 
   static getStubConfig() {
@@ -53,10 +82,12 @@ class MeterSnapCard extends HTMLElement {
   }
 
   async _fetchData() {
-    if (!this._hass) return;
-
+    if (!this._hass || !this._config) return;
+    const requestId = ++this._requestId;
+    const meterType = this._meterType;
     try {
-      const resp = await this._callApi('GET', `/api/meter_snap/reading?meter_type=${this._meterType}`);
+      const resp = await this._callApi('GET', `/api/meter_snap/reading?meter_type=${meterType}`);
+      if (requestId !== this._requestId) return;
       if (resp && resp.success) {
         this._readings = resp.readings || [];
         this._kpis = resp.kpis || {};
@@ -64,41 +95,21 @@ class MeterSnapCard extends HTMLElement {
     } catch (err) {
       console.warn('MeterSnap: Fehler beim Laden der Daten:', err);
     }
-    this._render();
+    if (!this._pendingScan && !this._loading) this._render();
   }
 
-  async _callApi(method, path, body = null, isFormData = false) {
-    const headers = {};
-    const token = this._hass?.auth?.data?.access_token || this._hass?.auth?.accessToken;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+  async _callApi(method, path, body) {
+    if (typeof this._hass?.callApi !== 'function') {
+      throw new Error('Home-Assistant-Verbindung noch nicht bereit. Bitte erneut versuchen.');
     }
-
-    const options = {
-      method,
-      headers,
-    };
-
-    if (body) {
-      if (isFormData) {
-        options.body = body;
-      } else {
-        headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
-      }
-    }
-
-    const res = await fetch(path, options);
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`API Error (${res.status}): ${txt}`);
-    }
-    return await res.json();
+    // HA owns authentication and token renewal. callApi adds the /api/ prefix.
+    return this._hass.callApi(method, path.replace(/^\/api\//, ''), body);
   }
 
   _setMeterType(type) {
     if (this._meterType !== type) {
       this._meterType = type;
+      this._page = 0;
       this._pendingScan = null;
       this._render();
       this._fetchData();
@@ -422,7 +433,9 @@ class MeterSnapCard extends HTMLElement {
 
       const resp = await this._callApi('POST', '/api/meter_snap/reading', payload);
       if (resp && resp.success) {
-        this._meterType = meterType; // Auto-switch tab to the saved meter
+        if (this._config.meter === 'switchable') this._meterType = meterType;
+        this._page = 0;
+        window.dispatchEvent(new Event('meter-snap-data-changed'));
         await this._fetchData();
 
         if (this._fileQueue && this._fileQueue.length > 0) {
@@ -461,6 +474,7 @@ class MeterSnapCard extends HTMLElement {
 
     try {
       await this._callApi('DELETE', `/api/meter_snap/reading?meter_type=${this._meterType}&id=${id}`);
+      window.dispatchEvent(new Event('meter-snap-data-changed'));
       await this._fetchData();
     } catch (err) {
       alert(`Fehler beim Löschen: ${err.message}`);
@@ -484,6 +498,10 @@ class MeterSnapCard extends HTMLElement {
   }
 
   _render() {
+    if (!this._config) return;
+    const pages = Math.max(1, Math.ceil(this._readings.length / this._config.history_page_size));
+    this._page = Math.min(this._page, pages - 1);
+    const visibleReadings = this._readings.slice(this._page * this._config.history_page_size, (this._page + 1) * this._config.history_page_size);
     const isElec = this._meterType === 'electricity';
     const unit = isElec ? 'kWh' : 'm³';
 
@@ -510,6 +528,7 @@ class MeterSnapCard extends HTMLElement {
           color: var(--primary-text-color, #212121);
         }
         ha-card {
+          display: block;
           padding: 16px;
           border-radius: var(--ha-card-border-radius, 12px);
           box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0,0,0,0.08));
@@ -671,7 +690,7 @@ class MeterSnapCard extends HTMLElement {
           filter: brightness(0.95);
         }
         .btn-smart {
-          background: linear-gradient(135deg, #0288d1 0%, #03a9f4 50%, #ff9800 100%);
+          background: var(--primary-color, #03a9f4);
         }
         .btn-manual {
           flex: 1;
@@ -820,11 +839,22 @@ class MeterSnapCard extends HTMLElement {
       </style>
 
       <ha-card>
+        <style>
+          .header { flex-wrap: wrap; gap: 12px; }
+          .title-row { min-width: 0; overflow-wrap: anywhere; }
+          .pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; }
+          .pagination button { color: var(--primary-text-color); background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 8px; min-height: 40px; cursor: pointer; }
+          .pagination button:disabled { opacity: .4; cursor: default; }
+          .compact .kpi-card { padding: 8px; }
+          .compact .kpi-grid { gap: 6px; margin-bottom: 8px; }
+          .compact td { padding: 6px; }
+          @media(max-width: 450px) { .action-bar { flex-wrap: wrap; } .modal-body { flex-direction: column; } }
+        </style>
         <!-- Header & Tabs -->
         <div class="header">
           <div class="title-row">
             <img src="/meter_snap_frontend/icon.png" class="title-logo" alt="MeterSnap" onerror="this.style.display='none'" />
-            <span>${this._config.title || 'MeterSnap'}</span>
+            <span>${meterSnapEscape(this._config.title)}</span>
           </div>
           <div class="tabs">
             <button class="tab-btn ${isElec ? 'active' : ''}" id="tabElec">⚡ Strom</button>
@@ -853,6 +883,7 @@ class MeterSnapCard extends HTMLElement {
           </div>
         </div>
 
+        <section class="capture-section">
         <!-- Loading Spinner -->
         ${this._loading ? `
           <div class="loading-overlay">
@@ -919,6 +950,7 @@ class MeterSnapCard extends HTMLElement {
           </div>
         ` : ''}
 
+        </section>
         <!-- History Table -->
         <div class="table-container">
           ${this._readings.length === 0 ? `
@@ -938,7 +970,7 @@ class MeterSnapCard extends HTMLElement {
                 </tr>
               </thead>
               <tbody>
-                ${this._readings.map(r => `
+                ${visibleReadings.map(r => `
                   <tr>
                     <td>${this._formatDate(r.timestamp)}</td>
                     <td><b>${r.reading}</b></td>
@@ -951,17 +983,38 @@ class MeterSnapCard extends HTMLElement {
                 `).join('')}
               </tbody>
             </table>
+            <nav class="pagination" aria-label="Ablesungen durchblättern">
+              <button id="prevPage" ${this._page === 0 ? 'disabled' : ''} aria-label="Vorherige Seite">← Zurück</button>
+              <span aria-live="polite">${this._page + 1} / ${pages} · ${this._readings.length} Ablesungen</span>
+              <button id="nextPage" ${this._page >= pages - 1 ? 'disabled' : ''} aria-label="Nächste Seite">Weiter →</button>
+            </nav>
           `}
         </div>
       </ha-card>
     `;
 
+    const card = this.shadowRoot.querySelector('ha-card');
+    card.classList.toggle('compact', this._config.compact);
+    const selectors = { header: '.header', kpis: '.kpi-grid', capture: '.capture-section', history: '.table-container' };
+    const sections = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, card.querySelector(selector)]));
+    const metrics = [...sections.kpis.children];
+    Object.keys(METER_SNAP_METRICS).forEach((key, index) => {
+      if (!this._config.metrics.includes(key)) metrics[index].remove();
+    });
+    this._config.metrics.forEach(key => sections.kpis.append(metrics[Object.keys(METER_SNAP_METRICS).indexOf(key)]));
+    Object.values(sections).forEach(section => section.remove());
+    this._config.sections.forEach(key => card.append(sections[key]));
+    if (this._config.meter !== 'switchable') sections.header.querySelector('.tabs').remove();
+    // Keep an active confirmation accessible even if the editor hides capture.
+    if ((this._pendingScan || this._loading) && !this._config.sections.includes('capture')) card.append(sections.capture);
     this._attachEventListeners();
   }
 
   _attachEventListeners() {
     const root = this.shadowRoot;
 
+    root.getElementById('prevPage')?.addEventListener('click', () => { this._page = Math.max(0, this._page - 1); this._render(); });
+    root.getElementById('nextPage')?.addEventListener('click', () => { this._page++; this._render(); });
     // Tabs
     root.getElementById('tabElec')?.addEventListener('click', () => this._setMeterType('electricity'));
     root.getElementById('tabGas')?.addEventListener('click', () => this._setMeterType('gas'));
@@ -1006,6 +1059,73 @@ class MeterSnapCard extends HTMLElement {
   }
 }
 
+class MeterSnapCardEditor extends HTMLElement {
+  constructor() { super(); this.attachShadow({mode: 'open'}); }
+  setConfig(config) { this._config = meterSnapConfig(config); this._render(); }
+  set hass(hass) { this._hass = hass; }
+  _emit() {
+    this.dispatchEvent(new CustomEvent('config-changed', {detail: {config: {...this._config}}, bubbles: true, composed: true}));
+  }
+  _render() {
+    if (!this._config) return;
+    const cfg = this._config;
+    const rows = (field, labels) => [...cfg[field], ...Object.keys(labels).filter(key => !cfg[field].includes(key))].map(key => {
+      const index = cfg[field].indexOf(key);
+      return `<div class="row"><label><input type="checkbox" data-list="${field}" value="${key}" ${index >= 0 ? 'checked' : ''}> ${labels[key]}</label>
+        <button type="button" data-field="${field}" data-key="${key}" data-step="-1" ${index <= 0 ? 'disabled' : ''} aria-label="${labels[key]} nach oben">↑</button>
+        <button type="button" data-field="${field}" data-key="${key}" data-step="1" ${index < 0 || index === cfg[field].length - 1 ? 'disabled' : ''} aria-label="${labels[key]} nach unten">↓</button></div>`;
+    }).join('');
+    this.shadowRoot.innerHTML = `<style>
+      :host { display:block; color:var(--primary-text-color); }
+      .field { display:grid; gap:6px; margin: 12px 0; }
+      input, select, button { font:inherit; color:var(--primary-text-color); background:var(--card-background-color, white); border:1px solid var(--divider-color, #aaa); border-radius:6px; padding:8px; }
+      input[type=checkbox] { accent-color:var(--primary-color); }
+      fieldset { border:1px solid var(--divider-color, #aaa); border-radius:8px; margin:16px 0; }
+      .row { display:flex; align-items:center; gap:8px; padding:4px 0; } .row label { flex:1; }
+      button { min-width:40px; min-height:40px; cursor:pointer; } button:disabled { opacity:.35; cursor:default; }
+      p { color:var(--secondary-text-color); font-size:.9em; }
+    </style>
+    <label class="field">Titel<input id="title" type="text" value="${meterSnapEscape(cfg.title)}"></label>
+    <label class="field">Zähler<select id="meter">
+      <option value="switchable">Strom und Gas umschaltbar</option><option value="electricity">Nur Strom</option><option value="gas">Nur Gas</option>
+    </select></label>
+    ${cfg.meter === 'switchable' ? '<label class="field">Beim Öffnen anzeigen<select id="default_meter"><option value="electricity">Strom</option><option value="gas">Gas</option></select></label>' : ''}
+    <label><input id="compact" type="checkbox" ${cfg.compact ? 'checked' : ''}> Kompakte Darstellung</label>
+    <fieldset><legend>Bereiche und Reihenfolge</legend>${rows('sections', METER_SNAP_SECTIONS)}</fieldset>
+    ${cfg.meter === 'switchable' && !cfg.sections.includes('header') ? '<p>Ohne Titelbereich wird nur der beim Öffnen gewählte Zähler angezeigt. Für eine feste Zählerkarte oben „Nur Strom“ oder „Nur Gas“ wählen.</p>' : ''}
+    <fieldset><legend>Kennzahlen und Reihenfolge</legend>${rows('metrics', METER_SNAP_METRICS)}</fieldset>
+    <label class="field">Ablesungen pro Seite (1–50)<input id="history_page_size" type="number" min="1" max="50" step="1" value="${cfg.history_page_size}"></label>
+    <p>Jede Karteninstanz hat eigene Einstellungen. Weitere MeterSnap-Karten können separat im Dashboard platziert werden. Farben folgen dem Home-Assistant-Theme.</p>`;
+    for (const field of ['meter', 'default_meter']) {
+      const el = this.shadowRoot.getElementById(field);
+      if (el) el.value = cfg[field];
+    }
+    for (const field of ['title', 'meter', 'default_meter', 'compact', 'history_page_size']) {
+      this.shadowRoot.getElementById(field)?.addEventListener('change', event => {
+        if (field === 'history_page_size' && !event.target.checkValidity()) { event.target.reportValidity(); return; }
+        this._config = meterSnapConfig({...this._config, [field]: field === 'compact' ? event.target.checked : event.target.value});
+        this._emit(); this._render();
+      });
+    }
+    this.shadowRoot.querySelectorAll('[data-list]').forEach(input => input.addEventListener('change', () => {
+      const field = input.dataset.list;
+      this._config[field] = input.checked ? [...this._config[field], input.value] : this._config[field].filter(key => key !== input.value);
+      this._emit(); this._render();
+    }));
+    this.shadowRoot.querySelectorAll('[data-step]').forEach(button => button.addEventListener('click', () => {
+      const field = button.dataset.field;
+      const list = [...this._config[field]];
+      const index = list.indexOf(button.dataset.key);
+      const next = index + Number(button.dataset.step);
+      if (index < 0 || next < 0 || next >= list.length) return;
+      [list[index], list[next]] = [list[next], list[index]];
+      this._config[field] = list;
+      this._emit(); this._render();
+    }));
+  }
+}
+customElements.define('meter-snap-card-editor', MeterSnapCardEditor);
+
 // Register Custom Element
 customElements.define('meter-snap-card', MeterSnapCard);
 
@@ -1019,7 +1139,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c METERSNAP CARD %c Version 1.1.2 geladen ',
+  '%c METERSNAP CARD %c Version 1.1.4-b1 geladen ',
   'color: white; background: #03a9f4; font-weight: 700;',
   'color: #03a9f4; background: white; font-weight: 700;'
 );

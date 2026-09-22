@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.2)
+[![version](https://img.shields.io/badge/version-1.1.4--b1-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4-b1)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -119,6 +119,47 @@ default_meter: electricity
 **Automatisch ab v1.1.2:** Bei über die Oberfläche verwalteten Dashboard-Ressourcen registriert MeterSnap die Karte beim Start selbst. Bestehende lokale Einträge für `meter-snap-card.js` werden auf die aktuelle Versions-URL umgestellt und doppelte Einträge zusammengeführt. Nach einem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Die Karte selbst platzierst du weiterhin im gewünschten Dashboard.
 
 **YAML-Ressourcen:** Diese bleiben manuell verwaltet. Verwende `/meter_snap_frontend/meter-snap-card.js?v=1.1.2` mit `type: module` und aktualisiere die Versionsangabe nach Updates. MeterSnap verändert keine YAML-Dateien.
+
+---
+
+## Authentifizierung ab v1.1.4-b1
+
+Die Karte verwendet für Lesen, Speichern, Löschen und Foto-Scans den Home-Assistant-Aufruf `hass.callApi`. Die bisherige manuelle Tokenübernahme entfällt. Dadurch übernimmt Home Assistant die Authentifizierung einschließlich Token-Erneuerung. Nach dem Update Home Assistant neu starten und alle geöffneten Dashboard-Seiten neu laden, damit keine alte Kartenversion weiter Anfragen sendet.
+
+## Modulare Karten ab v1.1.4-b1
+
+Unter **Dashboard bearbeiten → Karte hinzufügen → MeterSnap Card** steht ein visueller Editor bereit. Für bestehende Karten öffne **Bearbeiten** und gegebenenfalls **Visuellen Editor anzeigen**.
+
+- **Bereiche:** Titel/Zählerauswahl, Kennzahlen, Erfassung und Historie einzeln einblenden und mit den Pfeilen sortieren.
+- **Kennzahlen:** Stand, Verbrauch, Kosten und Monatsprognose einzeln auswählen und sortieren.
+- **Zähler:** Nur Strom, nur Gas oder umschaltbar; beim Umschalten lässt sich der Startzähler festlegen.
+- **Historie:** Standardmäßig fünf Ablesungen pro Seite, einstellbar von 1 bis 50. Zurück/Weiter öffnet weitere Einträge.
+- **Kompakt:** Reduzierte Abstände für kleine Karten. Farben orientieren sich am HA-Theme.
+
+Jede Karteninstanz speichert ihre eigene Darstellung in der Dashboard-Konfiguration. Füge beispielsweise eine Stromübersicht und eine separate Historienkarte hinzu. Änderungen an Ablesungen aktualisieren andere Karten auf derselben Seite sofort; weitere geöffnete Seiten laden spätestens nach etwa 30 Sekunden neue Daten, solange sie sichtbar sind. Laufende Eingaben werden dabei nicht überschrieben.
+
+Bestehende Konfigurationen mit `title` und `default_meter` funktionieren weiterhin; die Historie wird jetzt seitenweise angezeigt. Die Karten werden auf normalen, bearbeitbaren Dashboards platziert. Die eingebaute Energie-Seite bezieht weiterhin die Sensorwerte.
+
+Optionales YAML-Beispiel einer kompakten Stromkarte:
+
+```yaml
+type: custom:meter-snap-card
+title: Mein Strom
+meter: electricity
+compact: true
+sections:
+  - header
+  - kpis
+  - capture
+metrics:
+  - reading
+  - consumption
+history_page_size: 5
+```
+
+Eine separate Historie verwendet `sections: [header, history]`. Ohne `sections` oder `metrics` werden alle jeweiligen Bausteine angezeigt. Eine leere Liste blendet sie vollständig aus. Bei umschaltbaren Karten liegt die Zählerauswahl im Titelbereich.
+
+Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b1` aktualisieren.
 
 ---
 
