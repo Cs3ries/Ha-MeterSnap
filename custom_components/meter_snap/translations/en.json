@@ -77,6 +77,13 @@
           "gas_calorific_value": "Calorific Value (Brennwert kWh/m³, e.g. 11.2)",
           "gas_conversion_factor": "Volume Conversion Factor (Zustandszahl Z, e.g. 0.95)"
         }
+      },
+      "dashboard": {
+        "title": "MeterSnap energy dashboard",
+        "description": "Optionally add “MeterSnap Energie” to the sidebar: photo upload and manual readings alongside Home Assistant energy charts. Uses your existing energy sources; configure them under Settings → Dashboards → Energy. You can edit the cards in the dashboard. Disabling this option hides the page and preserves its layout. Manage this page here in MeterSnap, not in the list of manually created dashboards.",
+        "data": {
+          "energy_dashboard": "Enable MeterSnap energy dashboard"
+        }
       }
     }
   },
@@ -88,7 +95,8 @@
         "menu_options": {
           "provider_select": "AI Service & Recognition",
           "electricity": "Electricity Tariff",
-          "gas": "Gas Tariff"
+          "gas": "Gas Tariff",
+          "dashboard": "Energy dashboard & photo upload"
         }
       },
       "provider_select": {
@@ -160,6 +168,13 @@
           "gas_monthly_payment": "Monthly Advance Payment (€)",
           "gas_calorific_value": "Calorific Value (kWh/m³)",
           "gas_conversion_factor": "Volume Conversion Factor (Z)"
+        }
+      },
+      "dashboard": {
+        "title": "MeterSnap energy dashboard",
+        "description": "Optionally add “MeterSnap Energie” to the sidebar: photo upload and manual readings alongside Home Assistant energy charts. Uses your existing energy sources; configure them under Settings → Dashboards → Energy. You can edit the cards in the dashboard. Disabling this option hides the page and preserves its layout. Manage this page here in MeterSnap, not in the list of manually created dashboards.",
+        "data": {
+          "energy_dashboard": "Enable MeterSnap energy dashboard"
         }
       }
     }

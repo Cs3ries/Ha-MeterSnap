@@ -14,6 +14,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_API_KEY,
+    CONF_ENERGY_DASHBOARD,
     CONF_CUSTOM_ENDPOINT,
     CONF_CUSTOM_MODEL,
     CONF_ELEC_BASE_PRICE,
@@ -278,7 +279,7 @@ class MeterSnapConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._data.update(user_input)
-            return self.async_create_entry(title=NAME, data=self._data)
+            return await self.async_step_dashboard()
 
         schema = vol.Schema(
             {
@@ -293,6 +294,16 @@ class MeterSnapConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(step_id="gas", data_schema=schema, errors=errors)
 
+    async def async_step_dashboard(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Offer an optional energy dashboard with meter capture."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return self.async_create_entry(title=NAME, data=self._data)
+        return self.async_show_form(
+            step_id="dashboard",
+            data_schema=vol.Schema({vol.Required(CONF_ENERGY_DASHBOARD, default=False): cv.boolean}),
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
@@ -306,13 +317,13 @@ class MeterSnapOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
-        self._options: dict[str, Any] = dict(config_entry.options) if config_entry.options else dict(config_entry.data)
+        self._options: dict[str, Any] = {**config_entry.data, **config_entry.options}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Main options menu."""
         return self.async_show_menu(
             step_id="init",
-            menu_options=["provider_select", "electricity", "gas"],
+            menu_options=["provider_select", "electricity", "gas", "dashboard"],
         )
 
     async def async_step_provider_select(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -503,3 +514,15 @@ class MeterSnapOptionsFlow(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(step_id="gas", data_schema=schema)
+
+    async def async_step_dashboard(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Enable or hide the managed dashboard without deleting its layout."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return self.async_create_entry(title="", data=self._options)
+        return self.async_show_form(
+            step_id="dashboard",
+            data_schema=vol.Schema({
+                vol.Required(CONF_ENERGY_DASHBOARD, default=self._options.get(CONF_ENERGY_DASHBOARD, False)): cv.boolean,
+            }),
+        )

@@ -2,7 +2,7 @@
 
 DOMAIN = "meter_snap"
 NAME = "MeterSnap"
-VERSION = "1.1.4-b2"
+VERSION = "1.1.4-b3"
 
 # Storage
 STORAGE_KEY = "meter_snap_data"
@@ -31,6 +31,9 @@ DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_CUSTOM_MODEL = "llava"
 DEFAULT_CUSTOM_ENDPOINT = "http://localhost:11434/v1/chat/completions"
+
+# Optional dashboard
+CONF_ENERGY_DASHBOARD = "energy_dashboard"
 
 # Configuration Keys - General / AI
 CONF_OCR_PROVIDER = "ocr_provider"

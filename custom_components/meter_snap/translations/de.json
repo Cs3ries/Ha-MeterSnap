@@ -77,6 +77,13 @@
           "gas_calorific_value": "Brennwert (kWh/m³, z.B. 11.2)",
           "gas_conversion_factor": "Zustandszahl Z (z.B. 0.95)"
         }
+      },
+      "dashboard": {
+        "title": "MeterSnap-Energie-Dashboard",
+        "description": "Optional „MeterSnap Energie“ in der Seitenleiste anzeigen: Foto-Upload und manuelle Ablesung zusammen mit den Home-Assistant-Energiediagrammen. Verwendet deine bestehenden Energiequellen; diese richtest du unter Einstellungen → Dashboards → Energie ein. Die Karten kannst du im Dashboard bearbeiten. Ausschalten blendet die Seite aus und erhält dein Layout. Diese Seite verwaltest du hier in MeterSnap, nicht in der Liste manuell angelegter Dashboards.",
+        "data": {
+          "energy_dashboard": "MeterSnap-Energie-Dashboard anlegen / anzeigen"
+        }
       }
     }
   },
@@ -88,7 +95,8 @@
         "menu_options": {
           "provider_select": "KI-Dienst & Erkennung anpassen",
           "electricity": "Stromvertrag anpassen",
-          "gas": "Gasvertrag anpassen"
+          "gas": "Gasvertrag anpassen",
+          "dashboard": "Energie-Dashboard & Foto-Upload"
         }
       },
       "provider_select": {
@@ -160,6 +168,13 @@
           "gas_monthly_payment": "Monatlicher Abschlag (€)",
           "gas_calorific_value": "Brennwert (kWh/m³)",
           "gas_conversion_factor": "Zustandszahl Z"
+        }
+      },
+      "dashboard": {
+        "title": "MeterSnap-Energie-Dashboard",
+        "description": "Optional „MeterSnap Energie“ in der Seitenleiste anzeigen: Foto-Upload und manuelle Ablesung zusammen mit den Home-Assistant-Energiediagrammen. Verwendet deine bestehenden Energiequellen; diese richtest du unter Einstellungen → Dashboards → Energie ein. Die Karten kannst du im Dashboard bearbeiten. Ausschalten blendet die Seite aus und erhält dein Layout. Diese Seite verwaltest du hier in MeterSnap, nicht in der Liste manuell angelegter Dashboards.",
+        "data": {
+          "energy_dashboard": "MeterSnap-Energie-Dashboard anlegen / anzeigen"
         }
       }
     }

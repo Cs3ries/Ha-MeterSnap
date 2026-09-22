@@ -12,6 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_API_KEY,
+    CONF_ENERGY_DASHBOARD,
     CONF_CUSTOM_ENDPOINT,
     CONF_CUSTOM_MODEL,
     CONF_OCR_PROVIDER,
@@ -21,6 +22,7 @@ from .const import (
 )
 from .coordinator import MeterSnapCoordinator
 from .frontend_setup import async_register_card
+from .dashboard_setup import async_setup_dashboard
 from .ocr_engine import MeterSnapOCREngine
 from .views import (
     MeterSnapConfigView,
@@ -101,6 +103,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    if cfg.get(CONF_ENERGY_DASHBOARD, False):
+        from homeassistant.components import persistent_notification
+        try:
+            entry.async_on_unload(await async_setup_dashboard(hass, cfg))
+            persistent_notification.async_dismiss(hass, "meter_snap_dashboard_setup")
+        except Exception:
+            _LOGGER.exception("Could not set up MeterSnap energy dashboard")
+            persistent_notification.async_create(
+                hass,
+                "Das MeterSnap-Energie-Dashboard konnte nicht angelegt werden. "
+                "Prüfe das Home-Assistant-Protokoll, insbesondere ob die Adresse "
+                "/meter-snap-energy bereits belegt ist. Die Zählererfassung bleibt verfügbar. "
+                "Nach Behebung die MeterSnap-Integration neu laden.",
+                title="MeterSnap: Dashboard konnte nicht angelegt werden",
+                notification_id="meter_snap_dashboard_setup",
+            )
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
