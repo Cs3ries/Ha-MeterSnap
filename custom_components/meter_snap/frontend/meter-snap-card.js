@@ -1,6 +1,6 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.1.5-b1
+ * Version 1.1.5
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.

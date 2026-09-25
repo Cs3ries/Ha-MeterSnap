@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.5--b1-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.5-b1)
+[![version](https://img.shields.io/badge/version-1.1.5-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.5)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -179,7 +179,7 @@ history_page_size: 5
 
 Eine separate Historie verwendet `sections: [header, history]`. Ohne `sections` oder `metrics` werden alle jeweiligen Bausteine angezeigt. Eine leere Liste blendet sie vollständig aus. Bei umschaltbaren Karten liegt die Zählerauswahl im Titelbereich.
 
-Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.5-b1` aktualisieren.
+Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.5` aktualisieren.
 
 ---
 
@@ -211,9 +211,9 @@ Ab Home Assistant 2026.3 werden die mitgelieferten Bilder unter `custom_componen
 Die Icon-Anzeige in der HACS-Liste hängt zusätzlich von HACS ab: [HACS-Issue #5223](https://github.com/hacs/integration/issues/5223) beschreibt fehlende lokale Brand-Icons. Die Dateien im MeterSnap-Repository allein beheben diesen HACS-Fehler nicht.
 
 
-## Beta v1.1.5-b1: zuverlässige Ablesungen und Zählerwechsel
+## Neu in v1.1.5: zuverlässige Ablesungen und Zählerwechsel
 
-Vorabversion zum Testen; Basis ist v1.1.4. In der Historie öffnet ✏️ eine vorhandene
+Stabile Veröffentlichung auf Basis von v1.1.4. In der Historie öffnet ✏️ eine vorhandene
 Ablesung zum Bearbeiten von Stand, Zeitpunkt und Notiz. Verbrauch, Kosten und Kennzahlen
 werden chronologisch neu berechnet und zwischen Karten synchronisiert. Ungültige Zahlen,
 negative Stände, doppelte Zeitpunkte und sinkende Stände innerhalb desselben Zählers werden
