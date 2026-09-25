@@ -27,3 +27,6 @@ test/
 meter_snap/images/
 *.log
 ha-fehler/
+
+# Personal planning document; never publish
+/FEATURE-PLAN.md

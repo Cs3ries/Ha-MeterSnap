@@ -1,14 +1,26 @@
 /**
  * MeterSnap Lovelace Custom Card
- * Version 1.1.4
+ * Version 1.1.5-b1
  * 
  * Ermöglicht Foto-Aufnahme (Smartphone-Kamera), Ziffernerkennung via KI,
  * Bestätigungsdialog, Historientabelle und Kostenrechnung für Strom und Gas.
  */
 
 const METER_SNAP_SECTIONS = { header: 'Titel & Zählerauswahl', kpis: 'Kennzahlen', capture: 'Erfassung', history: 'Historie' };
-const METER_SNAP_METRICS = { reading: 'Aktueller Stand', consumption: 'Letzter Verbrauch', cost: 'Letzte Kosten', projection: 'Monatsprognose' };
+const METER_SNAP_METRICS = { reading: 'Aktueller Stand', consumption: 'Letzter Verbrauch', cost: 'Letzte Kosten', projection: 'Monatsprognose', freshness: 'Aktualität / Last read' };
 const meterSnapEscape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+function meterSnapLocalTime(value = new Date()) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+}
+function meterSnapAge(timestamp, now = new Date()) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  const day = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+  return day(now) - day(date);
+}
 function meterSnapConfig(config) {
   const list = (value, allowed) => Array.isArray(value) ? [...new Set(value.filter(key => Object.prototype.hasOwnProperty.call(allowed, key)))] : Object.keys(allowed);
   const sections = list(config.sections, METER_SNAP_SECTIONS);
@@ -372,7 +384,7 @@ class MeterSnapCard extends HTMLElement {
       };
     } catch (err) {
       alert(`Hinweis: ${err.message}\nDu kannst den Stand auch manuell eintragen.`);
-      const nowStr = new Date().toISOString().slice(0, 16);
+      const nowStr = meterSnapLocalTime();
       const isRawHeic = base64Image && (
         base64Image.startsWith('data:image/heic') ||
         base64Image.startsWith('data:image/heif') ||
@@ -398,7 +410,7 @@ class MeterSnapCard extends HTMLElement {
   }
 
   _openManualEntry() {
-    const nowStr = new Date().toISOString().slice(0, 16);
+    const nowStr = meterSnapLocalTime();
     this._pendingScan = {
       meter_type: this._meterType,
       reading: '',
@@ -413,6 +425,42 @@ class MeterSnapCard extends HTMLElement {
     this._render();
   }
 
+  _t(de, en) { return this._hass?.language?.startsWith('en') ? en : de; }
+
+  _freshnessText() {
+    const days = meterSnapAge(this._readings[0]?.timestamp);
+    if (days === null) return this._t('Noch keine gültige Ablesung', 'No valid reading yet');
+    if (days < 0) return this._t('Ablesung liegt in der Zukunft', 'Reading is in the future');
+    if (days === 0) return this._t('Zuletzt heute abgelesen', 'Last read today');
+    return this._t(`Zuletzt abgelesen vor ${days} ${days === 1 ? 'Tag' : 'Tagen'}`, `Last read ${days} ${days === 1 ? 'day' : 'days'} ago`);
+  }
+
+  _editEntry(id) {
+    const entry = this._readings.find(r => r.id === id);
+    if (!entry) return;
+    this._pendingScan = {...entry, meter_type: this._meterType,
+      unit: this._meterType === 'electricity' ? 'kWh' : 'm³',
+      timestamp: meterSnapLocalTime(entry.timestamp), original_timestamp: entry.timestamp,
+      details: this._t('Ablesung bearbeiten', 'Edit reading')};
+    this._render();
+  }
+
+  _openReplacement() {
+    this._openManualEntry();
+    Object.assign(this._pendingScan, {kind: 'replacement', old_reading: '',
+      details: this._t('Zählerwechsel', 'Meter replacement')});
+    this._render();
+  }
+
+  _rememberDraft() {
+    if (!this._pendingScan) return;
+    for (const [id, key] of [['confirmReadingInput', 'reading'], ['confirmTimeInput', 'timestamp'],
+      ['confirmNotesInput', 'notes'], ['confirmOldInput', 'old_reading']]) {
+      const input = this.shadowRoot.getElementById(id);
+      if (input) this._pendingScan[key] = input.value;
+    }
+  }
+
   async _savePendingScan() {
     if (!this._pendingScan) return;
 
@@ -421,9 +469,15 @@ class MeterSnapCard extends HTMLElement {
     const notesVal = this.shadowRoot.getElementById('confirmNotesInput')?.value;
     const meterType = this._pendingScan.meter_type || this._meterType;
 
-    const readingNum = parseFloat(inputVal);
-    if (isNaN(readingNum) || readingNum < 0) {
-      alert('Bitte gib einen gültigen positiven Zählerstand ein.');
+    this._rememberDraft();
+    const replacement = this._pendingScan.kind === 'replacement';
+    const readingNum = inputVal === '' && replacement ? null : Number(inputVal);
+    if ((!replacement && !inputVal?.trim()) || (readingNum !== null && (!Number.isFinite(readingNum) || readingNum < 0))) {
+      alert(this._t('Bitte einen endlichen Zählerstand ab 0 eingeben.', 'Enter a finite reading of 0 or greater.'));
+      return;
+    }
+    if (!timeVal || !Number.isFinite(new Date(timeVal).getTime())) {
+      alert(this._t('Bitte einen gültigen Zeitpunkt eingeben.', 'Enter a valid timestamp.'));
       return;
     }
 
@@ -435,6 +489,10 @@ class MeterSnapCard extends HTMLElement {
       let isoTimestamp = new Date().toISOString();
       if (timeVal) {
         isoTimestamp = new Date(timeVal).toISOString();
+        const original = this._pendingScan.original_timestamp;
+        if (original && new Date(timeVal).getTime() === new Date(meterSnapLocalTime(original)).getTime()) {
+          isoTimestamp = original; // Preserve sub-second precision and ambiguous DST instants on note-only edits.
+        }
       }
 
       const payload = {
@@ -442,9 +500,17 @@ class MeterSnapCard extends HTMLElement {
         reading: readingNum,
         timestamp: isoTimestamp,
         notes: notesVal || '',
+        id: this._pendingScan.id,
+        kind: this._pendingScan.kind || 'reading',
+        old_reading: this._pendingScan.old_reading === '' ? null : this._pendingScan.old_reading,
       };
 
-      const resp = await this._callApi('POST', '/api/meter_snap/reading', payload);
+      let resp = await this._callApi('POST', '/api/meter_snap/reading', payload);
+      while (resp?.warning) {
+        const details = resp.warnings.map(w => `${this._formatDate(w.from)} → ${this._formatDate(w.to)}: ${w.consumption} ${this._pendingScan.unit}, ${w.days.toFixed(2)} ${this._t('Tage', 'days')}; ${w.daily_rate.toFixed(2)}/${this._t('Tag', 'day')} > ${w.limit.toFixed(2)}/${this._t('Tag', 'day')}`).join('\n');
+        if (!confirm(this._t('Ungewöhnlicher Verbrauch. Grenze: mindestens 100 kWh bzw. 30 m³ pro Tag oder das Fünffache des bisherigen Median-Tagesverbrauchs. Trotzdem speichern?', 'Unusual consumption. Threshold: at least 100 kWh or 30 m³ per day, or five times the historical median daily consumption. Save anyway?') + '\n\n' + details)) return;
+        resp = await this._callApi('POST', '/api/meter_snap/reading', {...payload, confirmation: resp.confirmation});
+      }
       if (resp && resp.success) {
         if (this._config.meter === 'switchable') this._meterType = meterType;
         this._page = 0;
@@ -462,7 +528,7 @@ class MeterSnapCard extends HTMLElement {
         throw new Error(resp?.error || 'Fehler beim Speichern');
       }
     } catch (err) {
-      alert(`Fehler: ${err.message}`);
+      alert(err.body?.error || err.message || String(err));
     } finally {
       this._loading = false;
       this._statusMessage = '';
@@ -483,14 +549,15 @@ class MeterSnapCard extends HTMLElement {
   }
 
   async _deleteEntry(id) {
-    if (!confirm('Möchtest du diese Ablesung wirklich löschen?')) return;
+    if (!confirm(this._t('Möchtest du diese Ablesung wirklich löschen? Bereits gemeldete HA-Statistiken bleiben unverändert.', 'Delete this reading? Previously reported HA statistics remain unchanged.'))) return;
 
     try {
-      await this._callApi('DELETE', `/api/meter_snap/reading?meter_type=${this._meterType}&id=${id}`);
+      const result = await this._callApi('DELETE', `/api/meter_snap/reading?meter_type=${this._meterType}&id=${encodeURIComponent(id)}`);
+      if (!result?.success) throw new Error(result?.error || this._t('Ablesung nicht gefunden', 'Reading not found'));
       window.dispatchEvent(new Event('meter-snap-data-changed'));
       await this._fetchData();
     } catch (err) {
-      alert(`Fehler beim Löschen: ${err.message}`);
+      alert(err.body?.error || err.message || String(err));
     }
   }
 
@@ -548,10 +615,10 @@ class MeterSnapCard extends HTMLElement {
     const isElec = this._meterType === 'electricity';
     const unit = isElec ? 'kWh' : 'm³';
 
-    const currentReading = this._kpis.current_reading !== undefined ? this._kpis.current_reading : '-';
-    const lastConsumption = this._kpis.last_consumption !== undefined ? this._kpis.last_consumption : '-';
-    const lastCost = this._kpis.last_cost !== undefined ? this._kpis.last_cost.toFixed(2) : '-';
-    const projCost = this._kpis.projected_monthly_cost !== undefined ? this._kpis.projected_monthly_cost.toFixed(2) : '-';
+    const currentReading = this._kpis.current_reading != null ? this._kpis.current_reading : '-';
+    const lastConsumption = this._kpis.last_consumption != null ? this._kpis.last_consumption : '-';
+    const lastCost = this._kpis.last_cost != null ? this._kpis.last_cost.toFixed(2) : '-';
+    const projCost = this._kpis.projected_monthly_cost != null ? this._kpis.projected_monthly_cost.toFixed(2) : '-';
     const paymentDiff = this._kpis.monthly_payment_diff !== undefined ? this._kpis.monthly_payment_diff : null;
 
     let diffBadge = '';
@@ -924,6 +991,7 @@ class MeterSnapCard extends HTMLElement {
             <span class="kpi-val">${projCost} €</span>
             <div class="kpi-sub">${diffBadge}</div>
           </div>
+          <div class="kpi-card"><span class="kpi-label">${this._t("Aktualität", "Last read")}</span><span class="kpi-sub">${this._freshnessText()}</span></div>
         </div>
 
         <section class="capture-section">
@@ -939,14 +1007,15 @@ class MeterSnapCard extends HTMLElement {
         ${this._pendingScan && !this._loading ? `
           <div class="modal-card">
             <div class="modal-title">
-              <span>🔎 Zählerstand prüfen & bestätigen</span>
+              <span>🔎 ${this._t("Zählerstand prüfen & bestätigen", "Review & confirm reading")}</span>
               <span class="badge ${this._pendingScan.meter_type === 'electricity' ? 'badge-elec' : 'badge-gas'}">
-                ${this._pendingScan.meter_type === 'electricity' ? '⚡ Strom' : '🔥 Gas'} • ${this._pendingScan.details || 'Erkannt'}
+                ${this._pendingScan.meter_type === 'electricity' ? '⚡ Strom' : '🔥 Gas'} • ${meterSnapEscape(this._pendingScan.details || 'Erkannt')}
               </span>
             </div>
             ${this._pendingScan.remainingInQueue > 0 ? `
               <div class="queue-badge">📋 Noch ${this._pendingScan.remainingInQueue} weiteres Foto in der Warteschlange</div>
             ` : ''}
+            ${this._pendingScan.id ? `<p>${this._t("Korrekturen berechnen die lokale Historie neu. Bereits gemeldete HA-Statistiken bleiben unverändert.", "Corrections recalculate local history. Previously reported HA statistics remain unchanged.")}</p>` : ''}
             <div class="modal-body">
               ${this._pendingScan.image ? `
                 <img src="${this._pendingScan.image}" class="modal-img-preview" alt="Zähler Vorschau" />
@@ -955,27 +1024,32 @@ class MeterSnapCard extends HTMLElement {
                 <div class="form-group">
                   <label>Zählertyp zuordnen:</label>
                   <div class="type-switch">
-                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'electricity' ? 'active' : ''}" id="btnSwitchElec">⚡ Strom (kWh)</button>
-                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'gas' ? 'active' : ''}" id="btnSwitchGas">🔥 Gas (m³)</button>
+                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'electricity' ? 'active' : ''}" id="btnSwitchElec" ${this._pendingScan.id ? 'disabled' : ''}>⚡ Strom (kWh)</button>
+                    <button type="button" class="type-btn ${this._pendingScan.meter_type === 'gas' ? 'active' : ''}" id="btnSwitchGas" ${this._pendingScan.id ? 'disabled' : ''}>🔥 Gas (m³)</button>
                   </div>
                 </div>
                 <div class="form-group">
-                  <label for="confirmReadingInput">Zählerstand (${this._pendingScan.unit}):</label>
-                  <input type="number" step="0.001" class="form-input" id="confirmReadingInput" value="${this._pendingScan.reading}" />
+                  ${this._pendingScan.kind === 'replacement' ? `
+                    <p>${this._t('Wechsel: alten Endstand und neuen Anfangsstand am selben Zeitpunkt erfassen. Unbekannte Stände leer lassen; betroffene Intervalle bleiben unvollständig.', 'Replacement: enter the old final and new starting readings at the same timestamp. Leave unknown readings empty; affected intervals remain incomplete.')}</p>
+                    <label for="confirmOldInput">${this._t('Alter Endstand', 'Old final reading')}</label>
+                    <input type="number" min="0" step="0.001" class="form-input" id="confirmOldInput" value="${meterSnapEscape(this._pendingScan.old_reading)}">
+                  ` : ''}
+                  <label for="confirmReadingInput">${this._pendingScan.kind === 'replacement' ? this._t('Neuer Anfangsstand', 'New starting reading') : this._t('Zählerstand', 'Reading')} (${this._pendingScan.unit}):</label>
+                  <input type="number" step="0.001" class="form-input" id="confirmReadingInput" value="${meterSnapEscape(this._pendingScan.reading)}" />
                 </div>
                 <div class="form-group">
-                  <label for="confirmTimeInput">Datum & Uhrzeit:</label>
-                  <input type="datetime-local" class="form-input" id="confirmTimeInput" value="${this._pendingScan.timestamp}" />
+                  <label for="confirmTimeInput">${this._t("Datum & Uhrzeit", "Date & time")}:</label>
+                  <input type="datetime-local" step="1" class="form-input" id="confirmTimeInput" value="${meterSnapEscape(this._pendingScan.timestamp)}" />
                 </div>
                 <div class="form-group">
-                  <label for="confirmNotesInput">Notiz (optional):</label>
-                  <input type="text" class="form-input" id="confirmNotesInput" value="${this._pendingScan.notes}" />
+                  <label for="confirmNotesInput">${this._t("Notiz (optional)", "Note (optional)")}:</label>
+                  <input type="text" class="form-input" id="confirmNotesInput" value="${meterSnapEscape(this._pendingScan.notes)}" />
                 </div>
               </div>
             </div>
             <div class="modal-actions">
-              <button class="btn-cancel" id="btnCancelScan">Abbrechen</button>
-              <button class="btn-confirm" id="btnSaveScan">✅ Bestätigen & Speichern</button>
+              <button class="btn-cancel" id="btnCancelScan">${this._t("Abbrechen", "Cancel")}</button>
+              <button class="btn-confirm" id="btnSaveScan">✅ ${this._t("Bestätigen & Speichern", "Confirm & save")}</button>
             </div>
           </div>
         ` : ''}
@@ -987,6 +1061,7 @@ class MeterSnapCard extends HTMLElement {
             <button class="btn-capture btn-smart" id="btnCapture" title="Zählerfoto aufnehmen oder aus der Galerie wählen (Strom & Gas automatisch erkannt)">
               📸 Zähler scannen (Universal)
             </button>
+            <button class="btn-manual" id="btnReplacement">${this._t("Zählerwechsel", "Meter replacement")}</button>
             <button class="btn-manual" id="btnManual">
               ✏️ Manuell
             </button>
@@ -1015,12 +1090,13 @@ class MeterSnapCard extends HTMLElement {
               <tbody>
                 ${visibleReadings.map(r => `
                   <tr>
-                    <td>${this._formatDate(r.timestamp)}</td>
-                    <td><b>${r.reading}</b></td>
-                    <td>${r.consumption > 0 ? `+${r.consumption} ${unit}` : '-'}</td>
+                    <td>${this._formatDate(r.timestamp)}<br><small>${meterSnapEscape(r.notes)}</small>${r.kind === 'replacement' ? `<br>${this._t("Zählerwechsel", "Meter replacement")}: ${meterSnapEscape(r.old_reading ?? "?")} → ${meterSnapEscape(r.reading ?? "?")}` : ''}${r.incomplete ? `<br><strong title="${meterSnapEscape(r.data_issue)}">${this._t("Unvollständig", "Incomplete")}</strong>` : ''}</td>
+                    <td><b>${meterSnapEscape(r.reading ?? "?")}</b></td>
+                    <td>${r.consumption == null ? this._t("Unbekannt", "Unknown") : r.consumption >= 0 ? `+${r.consumption} ${unit}` : '-'}</td>
                     <td>${r.cost > 0 ? `${r.cost.toFixed(2)} €` : '-'}</td>
                     <td>
-                      <button class="btn-del" data-id="${r.id}" title="Eintrag löschen">🗑️</button>
+                      <button class="btn-edit" data-id="${meterSnapEscape(r.id)}" title="${this._t('Ablesung bearbeiten', 'Edit reading')}">✏️</button>
+                      ${r.kind !== 'replacement' ? `<button class="btn-del" data-id="${meterSnapEscape(r.id)}" title="${this._t('Eintrag löschen', 'Delete reading')}">🗑️</button>` : ''}
                     </td>
                   </tr>
                 `).join('')}
@@ -1092,6 +1168,9 @@ class MeterSnapCard extends HTMLElement {
     root.getElementById('btnSaveScan')?.addEventListener('click', () => this._savePendingScan());
     root.getElementById('btnCancelScan')?.addEventListener('click', () => this._cancelPendingScan());
 
+    root.getElementById('btnReplacement')?.addEventListener('click', () => this._openReplacement());
+    root.querySelectorAll('.btn-edit').forEach(btn => btn.addEventListener('click', () => this._editEntry(btn.getAttribute('data-id'))));
+    root.querySelectorAll('.modal-form input').forEach(input => input.addEventListener('input', () => this._rememberDraft()));
     // Row Delete
     root.querySelectorAll('.btn-del').forEach(btn => {
       btn.addEventListener('click', () => {

@@ -153,17 +153,23 @@ class MeterSnapReadingView(HomeAssistantView):
         try:
             body = await request.json()
             meter_type = body.get("meter_type", METER_ELECTRICITY)
-            reading_val = float(body.get("reading"))
+            reading_val = body.get("reading")
             timestamp = body.get("timestamp")
             notes = body.get("notes", "")
 
-            entry = await coordinator.async_add_reading(
+            entry = await coordinator.async_write_reading(
                 meter_type=meter_type,
                 reading=reading_val,
                 timestamp_str=timestamp,
                 notes=notes,
+                entry_id=body.get("id"),
+                kind=body.get("kind", "reading"),
+                old_reading=body.get("old_reading"),
+                confirmation=body.get("confirmation"),
             )
 
+            if entry.get("warning"):
+                return self.json({"success": False, **entry})
             kpis = coordinator.get_kpis(meter_type)
             return self.json({"success": True, "entry": entry, "kpis": kpis})
 
@@ -184,7 +190,10 @@ class MeterSnapReadingView(HomeAssistantView):
         if not entry_id:
             return self.json({"success": False, "error": "ID fehlt"}, status_code=400)
 
-        success = await coordinator.async_delete_reading(meter_type, entry_id)
+        try:
+            success = await coordinator.async_delete_reading(meter_type, entry_id)
+        except ValueError as err:
+            return self.json({"success": False, "error": str(err)}, status_code=400)
         kpis = coordinator.get_kpis(meter_type)
         readings = coordinator.get_readings(meter_type)
 

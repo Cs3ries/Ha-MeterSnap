@@ -16,11 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_ELEC_ENABLED,
-    CONF_GAS_CALORIFIC_VALUE,
-    CONF_GAS_CONVERSION_FACTOR,
     CONF_GAS_ENABLED,
-    DEFAULT_GAS_CALORIFIC_VALUE,
-    DEFAULT_GAS_CONVERSION_FACTOR,
     DOMAIN,
     METER_ELECTRICITY,
     METER_GAS,
@@ -169,7 +165,7 @@ class MeterSnapBaseSensor(SensorEntity):
 
 
 class MeterSnapReadingSensor(MeterSnapBaseSensor):
-    """Sensor for current meter reading (total increasing)."""
+    """Persisted forward-only total; physical reading remains an attribute."""
 
     def __init__(
         self,
@@ -188,11 +184,8 @@ class MeterSnapReadingSensor(MeterSnapBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the latest meter reading."""
-        latest = self.coordinator.get_latest_reading(self.meter_type)
-        if latest:
-            return latest.get("reading")
-        return None
+        """Return the recorder-safe persisted total."""
+        return self.coordinator.get_statistics(self.meter_type).get("total")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -201,6 +194,9 @@ class MeterSnapReadingSensor(MeterSnapBaseSensor):
         if not latest:
             return {}
         return {
+            "physical_reading": latest.get("reading"),
+            "statistics_corrections": self.coordinator.get_statistics(self.meter_type).get("corrections", False),
+            "statistics_policy": "forward_only",
             "timestamp": latest.get("timestamp"),
             "daily_average": latest.get("daily_average"),
             "image_file": latest.get("image_file"),
@@ -209,7 +205,7 @@ class MeterSnapReadingSensor(MeterSnapBaseSensor):
 
 
 class MeterSnapGasEnergySensor(MeterSnapBaseSensor):
-    """Virtual sensor converting total gas m³ to total kWh for HA Energy Dashboard."""
+    """Persisted gas energy total, advanced only for newly reported intervals."""
 
     def __init__(
         self,
@@ -225,14 +221,7 @@ class MeterSnapGasEnergySensor(MeterSnapBaseSensor):
     @property
     def native_value(self) -> float | None:
         """Return the total gas in kWh."""
-        latest = self.coordinator.get_latest_reading(METER_GAS)
-        if not latest:
-            return None
-        m3_reading = float(latest.get("reading", 0.0))
-        cfg = self.coordinator.config
-        calorific = float(cfg.get(CONF_GAS_CALORIFIC_VALUE, DEFAULT_GAS_CALORIFIC_VALUE))
-        z_factor = float(cfg.get(CONF_GAS_CONVERSION_FACTOR, DEFAULT_GAS_CONVERSION_FACTOR))
-        return round(m3_reading * calorific * z_factor, 2)
+        return self.coordinator.get_statistics(METER_GAS).get("energy")
 
 
 class MeterSnapLastConsumptionSensor(MeterSnapBaseSensor):

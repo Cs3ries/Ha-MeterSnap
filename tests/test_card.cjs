@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 (async () => {
-  const browser = await chromium.launch({headless: true});
+  const browser = await chromium.launch({headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? {executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH} : {})});
   try {
     const page = await browser.newPage({viewport: {width: 390, height: 844}});
     const errors = [];
@@ -131,12 +131,54 @@ const path = require('node:path');
       check(!both.shadowRoot.querySelector('meter-snap-card') && meters.every(card => !card.isConnected), 'mode change disconnects children');
       both.remove();
 
+      // New reading workflows use the same API, dialog and synchronization event.
+      check(meterSnapAge('2026-03-08T12:00:00', new Date('2026-03-09T11:00:00')) === 1, 'calendar days across DST');
+      check(meterSnapAge('2026-01-01T23:59:00', new Date('2026-01-02T00:01:00')) === 1, 'calendar midnight');
+      check(meterSnapAge(null) === null && meterSnapAge('bad') === null, 'missing freshness');
+      const editCard = document.createElement('meter-snap-card');
+      editCard.setConfig({sections:['history','kpis'], meter:'electricity'});
+      editCard._hass = {language:'en'};
+      editCard._readings = [{id:'edit', timestamp:'2026-01-01T12:34:56.789Z', reading:100, notes:'<unsafe "note">', consumption:null, cost:null, incomplete:true}];
+      editCard._kpis = {current_reading:null,last_cost:null,projected_monthly_cost:null};
+      document.body.append(editCard); editCard._render();
+      check(editCard.shadowRoot.textContent.includes('Incomplete'), 'incomplete in English');
+      editCard.shadowRoot.querySelector('.btn-edit').click();
+      check(editCard.shadowRoot.querySelector('#confirmNotesInput').value === '<unsafe "note">', 'escaped editing note');
+      check(editCard.shadowRoot.querySelector('#confirmTimeInput').value === meterSnapLocalTime('2026-01-01T12:34:56Z'), 'local time including seconds');
+      check(editCard.shadowRoot.querySelector('#btnSwitchGas').disabled, 'editing cannot move meters');
+      const setInput = (id,value) => { const input = editCard.shadowRoot.getElementById(id); input.value=value; input.dispatchEvent(new Event('input')); };
+      setInput('confirmReadingInput','105'); setInput('confirmNotesInput','corrected');
+      const sent = []; const oldConfirm = window.confirm; const oldAlert = window.alert;
+      let confirmed = false;
+      window.confirm = () => confirmed;
+      window.alert = message => { throw new Error(message); };
+      editCard._fetchData = async () => {};
+      editCard._callApi = async (method,url,payload) => {
+        sent.push(payload);
+        return payload.confirmation ? {success:true} : {warning:true, confirmation:'token', warnings:[{from:'2026-01-01',to:'2026-01-02',consumption:105,days:1,daily_rate:105,limit:100}]};
+      };
+      await editCard._savePendingScan();
+      check(sent.length === 1 && editCard._pendingScan, 'cancel warning keeps draft unsaved');
+      check(editCard.shadowRoot.querySelector('#confirmReadingInput').value === '105', 'warning preserves changed value');
+      confirmed = true; await editCard._savePendingScan();
+      check(sent.length === 3 && sent[2].confirmation === 'token' && sent[2].id === 'edit' && sent[2].notes === 'corrected' && sent[2].timestamp === '2026-01-01T12:34:56.789Z', 'explicit confirmed correction');
+      check(!editCard._pendingScan, 'success closes draft');
+      editCard._openReplacement();
+      check(editCard.shadowRoot.querySelector('#confirmOldInput'), 'replacement form');
+      setInput('confirmTimeInput', '2026-01-02T12:00:00');
+      editCard._callApi = async (method,url,payload) => { sent.push(payload); return {success:true}; };
+      await editCard._savePendingScan();
+      check(sent.at(-1).kind === 'replacement' && sent.at(-1).reading === null && sent.at(-1).old_reading === null, 'unknown replacement readings remain null');
+      window.confirm = oldConfirm; window.alert = oldAlert;
+      check(editor.shadowRoot.querySelector('[data-list="metrics"][value="freshness"]'), 'freshness in visual editor');
+      editCard.remove();
+
       const preview = document.createElement('meter-snap-card');
       preview.setConfig({title:'Mein Strom',meter:'electricity',compact:true});
       preview._kpis = {current_reading:12450,last_consumption:210,last_cost:78,projected_monthly_cost:82};
       preview._readings = Array.from({length:12}, (_,i) => ({id:String(i),timestamp:'2026-09-22T12:00:00Z',reading:12450-i*210,consumption:210,cost:78}));
       document.body.append(preview); preview._render();
-      return 'authenticated API delegation, pagination, configuration, editor, synchronization, draft preservation, request races passed';
+      return 'authenticated API delegation, pagination, configuration, editor, synchronization, draft preservation, request races, editing, replacement, warnings and freshness passed';
     });
     await page.screenshot({path:'/tmp/meter-snap-mobile.png', fullPage:true});
     await page.evaluate(() => {

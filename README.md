@@ -1,7 +1,7 @@
 # 📸 MeterSnap – Foto-Zählerstandserfassung & Energieabrechnung für Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/default)
-[![version](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.4)
+[![version](https://img.shields.io/badge/version-1.1.5--b1-orange.svg)](https://github.com/Cs3ries/Ha-MeterSnap/releases/tag/v1.1.5-b1)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2023.1%2B-blue.svg)](https://www.home-assistant.io/)
 
 **MeterSnap** ist eine native Home Assistant Custom Integration mit maßgeschneiderter Dashboard-Karte (Lovelace Card). Sie ermöglicht es dir, Zählerstände von **Strom- und Gaszählern** per Smartphone-Foto oder Bild-Upload automatisch per KI auszulesen (oder komplett offline manuell einzutragen), in einer Historientabelle zu archivieren und deinen Verbrauch sowie deine Kosten minutengenau anhand deiner echten Vertragskonditionen zu berechnen.
@@ -149,7 +149,7 @@ Die Karte verwendet für Lesen, Speichern, Löschen und Foto-Scans den Home-Assi
 Unter **Dashboard bearbeiten → Karte hinzufügen → MeterSnap Card** steht ein visueller Editor bereit. Für bestehende Karten öffne **Bearbeiten** und gegebenenfalls **Visuellen Editor anzeigen**.
 
 - **Bereiche:** Titel/Zählerauswahl, Kennzahlen, Erfassung und Historie einzeln einblenden und mit den Pfeilen sortieren. Abgewählte Bereiche und Kennzahlen behalten ihre Position im Editor und erscheinen beim erneuten Anwählen wieder an derselben Stelle. Nur die Pfeiltasten ändern die Reihenfolge.
-- **Kennzahlen:** Stand, Verbrauch, Kosten und Monatsprognose einzeln auswählen und sortieren.
+- **Kennzahlen:** Stand, Verbrauch, Kosten, Monatsprognose und Aktualität (`freshness`) einzeln auswählen und sortieren. Bestehende explizite Auswahllisten bleiben erhalten; Aktualität lässt sich im visuellen Editor ergänzen.
 - **Zähleranzeige:** Nur Strom, nur Gas, beide mit Umschalter oder beide gleichzeitig. Bei gleichzeitiger Anzeige stehen die Zähler je nach Kartenbreite neben- oder untereinander, mit eigener Erfassung und eigener Historienseite. Beim Umschalten lässt sich der Startzähler festlegen.
 - **Historie:** Standardmäßig fünf Ablesungen pro Seite, einstellbar von 1 bis 50. Zurück/Weiter öffnet weitere Einträge.
 - **Kompakt:** Reduzierte Abstände für kleine Karten. Farben orientieren sich am HA-Theme.
@@ -179,7 +179,7 @@ history_page_size: 5
 
 Eine separate Historie verwendet `sections: [header, history]`. Ohne `sections` oder `metrics` werden alle jeweiligen Bausteine angezeigt. Eine leere Liste blendet sie vollständig aus. Bei umschaltbaren Karten liegt die Zählerauswahl im Titelbereich.
 
-Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.4-b4` aktualisieren.
+Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Bei manuell verwalteten YAML-Ressourcen die URL auf `/meter_snap_frontend/meter-snap-card.js?v=1.1.5-b1` aktualisieren.
 
 ---
 
@@ -209,3 +209,48 @@ Nach dem Update Home Assistant neu starten und die Dashboard-Seite neu laden. Be
 Ab Home Assistant 2026.3 werden die mitgelieferten Bilder unter `custom_components/meter_snap/brand/` für die Integrationsanzeige verwendet. Nach dem Update Home Assistant neu starten und die Oberfläche neu laden. Ältere HA-Versionen unterstützen diese lokalen Brand-Bilder nicht.
 
 Die Icon-Anzeige in der HACS-Liste hängt zusätzlich von HACS ab: [HACS-Issue #5223](https://github.com/hacs/integration/issues/5223) beschreibt fehlende lokale Brand-Icons. Die Dateien im MeterSnap-Repository allein beheben diesen HACS-Fehler nicht.
+
+
+## Beta v1.1.5-b1: zuverlässige Ablesungen und Zählerwechsel
+
+Vorabversion zum Testen; Basis ist v1.1.4. In der Historie öffnet ✏️ eine vorhandene
+Ablesung zum Bearbeiten von Stand, Zeitpunkt und Notiz. Verbrauch, Kosten und Kennzahlen
+werden chronologisch neu berechnet und zwischen Karten synchronisiert. Ungültige Zahlen,
+negative Stände, doppelte Zeitpunkte und sinkende Stände innerhalb desselben Zählers werden
+mit einer Fehlermeldung abgelehnt. Auffällige Tagesraten erfordern eine ausdrückliche
+Bestätigung mit Anzeige des betroffenen Intervalls und der Warnschwelle.
+
+**Zählerwechsel** erfasst Wechselzeitpunkt, alten Endstand und neuen Anfangsstand.
+Unbekannte Stände dürfen leer bleiben; die betroffenen Intervalle sind dann ausdrücklich
+unvollständig. Wechsel können über die Historie vervollständigt/korrigiert werden.
+Die Differenz zwischen zwei verschiedenen Zählern wird niemals als Verbrauch gerechnet.
+
+**HA-Statistiken:** Die bisherigen Standsensoren behalten ihre IDs, liefern aber einen
+separat gespeicherten, fortgeschriebenen Statistikstand. Tatsächlicher Zählerstand und
+Statistikstand können nach Korrektur/Wechsel voneinander abweichen. Der tatsächliche Stand
+bleibt in der Karte und im Sensorattribut `physical_reading` sichtbar. Nachträge,
+Bearbeitungen und Löschungen korrigieren die lokale Historie, schreiben vorhandene
+HA-Langzeitstatistiken jedoch nicht um. Nur neue bekannte Intervalle erhöhen die Sensoren.
+Es gibt keine rückwirkende Verbrauchsverteilung und keine automatische Statistikreparatur.
+
+Die Aktualitätskennzahl zeigt „heute“, die vergangenen Kalendertage oder fehlende Ablesungen;
+sie folgt dem Datum in der Browser-Zeitzone und wird bei sichtbaren Karten regelmäßig aktualisiert.
+Neue Bedienungstexte sind auf Deutsch und Englisch verfügbar.
+
+[Statistikkonzept, Migration, Grenzen und konkrete HA-Prüfanleitung](STATISTICS-TESTING.md).
+Die reale Recorder-/Energie-Dashboard-Integration ist noch manuell zu prüfen.
+
+### English: readings, corrections and meter replacements
+
+Use the pencil in history to edit a reading, timestamp or note. Adjacent consumption
+intervals and local costs are recalculated. Invalid values, duplicate timestamps and
+decreasing readings on the same meter are rejected. Unusual daily consumption requires
+explicit confirmation. **Meter replacement** records the old final and new starting
+readings at one instant. Unknown readings remain empty and affected intervals stay incomplete.
+
+Existing sensor IDs remain stable. Their state becomes a persisted forward-only statistics
+total; the physical reading remains visible in the card and `physical_reading` attribute.
+Historical corrections never rewrite existing HA statistics or distribute consumption
+backwards. Only new known intervals advance the totals. Existing statistics errors require
+separate manual review. The optional **Last read** metric uses local calendar dates.
+See the linked test guide for limitations and pending real Home Assistant checks.

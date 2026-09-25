@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import asyncio
+from copy import deepcopy
 import logging
 import os
 import uuid
@@ -35,18 +37,14 @@ from .const import (
     STORAGE_VERSION,
 )
 
+from .readings import ReadingError, parse_timestamp, number, interval, sort_key, validate_change, confirmation_token
+
 _LOGGER = logging.getLogger(__name__)
 
 
 def parse_iso_datetime(dt_str: str) -> datetime:
-    """Safely parse ISO datetime string."""
-    try:
-        dt = datetime.fromisoformat(dt_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        return datetime.now(timezone.utc)
+    """Parse timestamps strictly, retaining legacy UTC interpretation."""
+    return parse_timestamp(dt_str)
 
 
 class MeterSnapCoordinator:
@@ -61,6 +59,9 @@ class MeterSnapCoordinator:
             METER_ELECTRICITY: [],
             METER_GAS: [],
         }
+        self._lock = asyncio.Lock()
+        self._statistics = {}
+        self._extra_storage = {}
         self._listeners: list[Callable[[], None]] = []
         self._image_dir = hass.config.path(IMAGE_DIR)
 
@@ -77,6 +78,8 @@ class MeterSnapCoordinator:
         data = await self._store.async_load()
         needs_save = False
         if data and isinstance(data, dict):
+            self._extra_storage = {k: v for k, v in data.items() if k not in METER_TYPES}
+            self._statistics = deepcopy(data.get("_statistics", {}))
             for meter_type in METER_TYPES:
                 items = data.get(meter_type, [])
                 for item in items:
@@ -85,6 +88,11 @@ class MeterSnapCoordinator:
                         needs_save = True
                 self._readings[meter_type] = items
                 self._recalculate_metrics(meter_type)
+
+        for meter_type in METER_TYPES:
+            if meter_type not in self._statistics:
+                self._statistics[meter_type] = self._initial_statistics(meter_type)
+                needs_save = True
 
         if needs_save:
             await self._async_save()
@@ -142,57 +150,131 @@ class MeterSnapCoordinator:
             except Exception as err:
                 _LOGGER.error("Error notifying MeterSnap listener: %s", err)
 
-    async def async_add_reading(
-        self,
-        meter_type: str,
-        reading: float,
-        timestamp_str: str | None = None,
-        image_base64: str | None = None,
-        notes: str = "",
-    ) -> dict[str, Any]:
-        """Add a new reading and recompute metrics."""
-        if meter_type not in METER_TYPES:
-            raise ValueError(f"Ungültiger Zählertyp: {meter_type}")
+    def _factor(self, meter_type):
+        if meter_type == METER_ELECTRICITY:
+            return 1.0
+        return float(self.config.get(CONF_GAS_CALORIFIC_VALUE, DEFAULT_GAS_CALORIFIC_VALUE)) * float(self.config.get(CONF_GAS_CONVERSION_FACTOR, DEFAULT_GAS_CONVERSION_FACTOR))
 
-        if not timestamp_str:
-            timestamp_str = datetime.now(timezone.utc).isoformat()
+    def _initial_statistics(self, meter_type):
+        latest = self.get_latest_reading(meter_type)
+        try:
+            value = number(latest.get("reading"), optional=True) if latest else None
+        except ReadingError:
+            value = None
+        try:
+            watermark = parse_timestamp(latest["timestamp"]).isoformat() if latest else None
+        except ReadingError:
+            watermark = None
+            latest = None
+        return {"total": value, "energy": round(value * self._factor(meter_type), 2) if value is not None else None,
+                "anchor": deepcopy(latest), "watermark": watermark,
+                "segment": next((r["id"] for r in reversed(self._readings[meter_type]) if r.get("kind") == "replacement"), None),
+                "corrections": False}
 
-        entry_id = str(uuid.uuid4())
-        entry = {
-            "id": entry_id,
-            "timestamp": timestamp_str,
-            "reading": round(float(reading), 3),
-            "image_file": None,
-            "notes": notes,
-        }
+    def get_statistics(self, meter_type):
+        return self._statistics.get(meter_type, {})
 
-        self._readings[meter_type].append(entry)
-        self._recalculate_metrics(meter_type)
-        await self._async_save()
-        self._notify_listeners()
+    def _advance_statistics(self, meter_type, entry, candidate, editing=False):
+        state = self._statistics.setdefault(meter_type, self._initial_statistics(meter_type))
+        anchor = state.get("anchor")
+        watermark = state.get("watermark")
+        segment = next((r["id"] for r in reversed(candidate) if r.get("kind") == "replacement"), None)
+        if not editing and (not watermark or sort_key(entry) > parse_timestamp(watermark)):
+            delta = None
+            if anchor:
+                try:
+                    delta, _ = interval(anchor, entry)
+                except ReadingError:
+                    pass
+            if state["total"] is None:
+                state["total"] = entry.get("reading")
+                state["energy"] = round(state["total"] * self._factor(meter_type), 2) if state["total"] is not None else None
+            elif delta is not None:
+                state["total"] = round(state["total"] + delta, 3)
+                state["energy"] = round(state["energy"] + delta * self._factor(meter_type), 2)
+            else:
+                state["corrections"] = True
+            state["anchor"] = deepcopy(entry)
+            state["watermark"] = entry["timestamp"]
+        else:
+            state["corrections"] = True
+            # Rebase after corrections, without changing previously published totals.
+            latest = candidate[-1]
+            if segment != state.get("segment") or (editing and (not anchor or anchor["id"] == entry["id"] or sort_key(latest) > sort_key(anchor))):
+                state["anchor"] = deepcopy(latest)
+                state["watermark"] = max(parse_timestamp(watermark), sort_key(latest)).isoformat() if watermark else latest["timestamp"]
 
-        # Find updated entry with calculated fields
-        for r in self._readings[meter_type]:
-            if r.get("id") == entry_id:
-                return r
-        return entry
+        state["segment"] = segment
 
-    async def async_delete_reading(self, meter_type: str, entry_id: str) -> bool:
-        """Delete a reading by ID and recalculate."""
-        if meter_type not in METER_TYPES:
-            return False
+    async def async_add_reading(self, meter_type, reading, timestamp_str=None,
+                                image_base64=None, notes="", **kwargs):
+        return await self.async_write_reading(meter_type, reading, timestamp_str, notes, **kwargs)
 
-        original_count = len(self._readings[meter_type])
-        remaining = [item for item in self._readings[meter_type] if item.get("id") != entry_id]
+    async def async_write_reading(self, meter_type, reading, timestamp_str=None, notes="",
+                                  entry_id=None, kind="reading", old_reading=None, confirmation=None):
+        async with self._lock:
+            if meter_type not in METER_TYPES:
+                raise ReadingError("Ungültiger Zählertyp / Invalid meter type")
+            if kind not in ("reading", "replacement"):
+                raise ReadingError("Ungültiger Eintragstyp / Invalid record type")
+            if not isinstance(notes, str):
+                raise ReadingError("Ungültige Notiz / Invalid note")
+            before = self._readings[meter_type]
+            original = next((r for r in before if r['id'] == entry_id), None)
+            if entry_id and original is None:
+                raise ReadingError("Ablesung nicht gefunden / Reading not found")
+            if original and original.get('kind', 'reading') != kind:
+                raise ReadingError("Eintragstyp darf nicht geändert werden / Record type cannot be changed")
+            timestamp = parse_timestamp(timestamp_str if timestamp_str is not None else datetime.now(timezone.utc).isoformat()).isoformat()
+            entry = {**(original or {}), "id": entry_id or "pending", "timestamp": timestamp,
+                     "reading": number(reading, optional=kind == "replacement"), "kind": kind,
+                     "notes": notes, "image_file": None}
+            if kind == "replacement":
+                entry['old_reading'] = number(old_reading, optional=True)
+            candidate = sorted([deepcopy(r) for r in before if r['id'] != entry_id] + [entry], key=sort_key)
+            warnings = validate_change(before, candidate, entry['id'], meter_type)
+            token = confirmation_token(candidate, warnings)
+            if warnings and confirmation != token:
+                return {"warning": True, "warnings": warnings, "confirmation": token}
+            if not entry_id:
+                entry['id'] = str(uuid.uuid4())
+            old_state = deepcopy(self._statistics)
+            self._statistics.setdefault(meter_type, self._initial_statistics(meter_type))
+            self._advance_statistics(meter_type, entry, candidate, editing=bool(entry_id))
+            self._readings[meter_type] = candidate
+            self._recalculate_metrics(meter_type)
+            try:
+                await self._async_save()
+            except Exception:
+                self._readings[meter_type] = before
+                self._statistics = old_state
+                raise
+            self._notify_listeners()
+            return entry
 
-        if len(remaining) == original_count:
-            return False
-
-        self._readings[meter_type] = remaining
-        self._recalculate_metrics(meter_type)
-        await self._async_save()
-        self._notify_listeners()
-        return True
+    async def async_delete_reading(self, meter_type, entry_id):
+        async with self._lock:
+            before = self._readings.get(meter_type, [])
+            original = next((r for r in before if r['id'] == entry_id), None)
+            if original is None:
+                return False
+            if original.get('kind') == 'replacement':
+                raise ReadingError("Zählerwechsel bitte bearbeiten, nicht löschen / Edit a meter replacement instead of deleting it")
+            candidate = [deepcopy(r) for r in before if r['id'] != entry_id]
+            validate_change(before, candidate, entry_id, meter_type)
+            old_state = deepcopy(self._statistics)
+            self._statistics.setdefault(meter_type, self._initial_statistics(meter_type))["corrections"] = True
+            # Keep the published anchor when deleting latest, to avoid counting it twice.
+            self._readings[meter_type] = candidate
+            self._recalculate_metrics(meter_type)
+            try:
+                await self._async_save()
+            except Exception:
+                self._readings[meter_type] = before
+                self._statistics = old_state
+                raise
+            self._notify_listeners()
+            return True
 
     def get_readings(self, meter_type: str) -> list[dict[str, Any]]:
         """Get all readings for a meter sorted newest first."""
@@ -208,13 +290,13 @@ class MeterSnapCoordinator:
         latest = self.get_latest_reading(meter_type)
         if not latest:
             return {
-                "current_reading": 0.0,
-                "last_consumption": 0.0,
-                "last_consumption_kwh": 0.0,
-                "last_cost": 0.0,
-                "daily_average": 0.0,
-                "projected_monthly_cost": 0.0,
-                "monthly_payment_diff": 0.0,
+                "current_reading": None,
+                "last_consumption": None,
+                "last_consumption_kwh": None,
+                "last_cost": None,
+                "daily_average": None,
+                "projected_monthly_cost": None,
+                "monthly_payment_diff": None,
                 "unit": "kWh" if meter_type == METER_ELECTRICITY else "m³",
             }
 
@@ -232,7 +314,9 @@ class MeterSnapCoordinator:
                 cfg.get(CONF_GAS_MONTHLY_PAYMENT, DEFAULT_GAS_MONTHLY_PAYMENT)
             )
 
-        daily_avg = float(latest.get("daily_average", 0.0))
+        daily_avg = latest.get("daily_average")
+        incomplete = daily_avg is None
+        daily_avg = float(daily_avg or 0.0)
         # 30.4375 days per average month
         proj_monthly_work_cost = daily_avg * 30.4375 * unit_price
         proj_monthly_cost = proj_monthly_work_cost + base_price
@@ -243,10 +327,10 @@ class MeterSnapCoordinator:
             "last_consumption": latest.get("consumption", 0.0),
             "last_consumption_kwh": latest.get("consumption_kwh", 0.0),
             "last_cost": latest.get("cost", 0.0),
-            "daily_average": daily_avg,
-            "projected_monthly_cost": round(proj_monthly_cost, 2),
+            "daily_average": None if incomplete else daily_avg,
+            "projected_monthly_cost": None if incomplete else round(proj_monthly_cost, 2),
             "monthly_payment": monthly_payment,
-            "monthly_payment_diff": round(diff_to_payment, 2),
+            "monthly_payment_diff": None if incomplete else round(diff_to_payment, 2),
             "unit": "kWh" if meter_type == METER_ELECTRICITY else "m³",
         }
 
@@ -257,7 +341,7 @@ class MeterSnapCoordinator:
             return
 
         # Sort by timestamp ascending
-        items.sort(key=lambda x: parse_iso_datetime(x.get("timestamp", "")))
+        items.sort(key=sort_key)
 
         cfg = self.config
         if meter_type == METER_ELECTRICITY:
@@ -278,7 +362,8 @@ class MeterSnapCoordinator:
         daily_base_price = (base_price * 12.0) / 365.25
 
         for i, item in enumerate(items):
-            reading = float(item.get("reading", 0.0))
+            item["incomplete"] = False
+            item.pop("data_issue", None)
             if i == 0:
                 item["consumption"] = 0.0
                 item["consumption_kwh"] = 0.0
@@ -287,19 +372,29 @@ class MeterSnapCoordinator:
                 item["cost"] = 0.0
                 item["work_cost"] = 0.0
                 item["base_cost"] = 0.0
+                try:
+                    parse_timestamp(item.get("timestamp"))
+                    number(item.get("reading"))
+                    if item.get("kind") == "replacement":
+                        number(item.get("old_reading"))
+                except ReadingError as err:
+                    item["incomplete"] = True
+                    item["data_issue"] = str(err)
+                    for field in ("consumption", "consumption_kwh", "days", "daily_average", "cost", "work_cost", "base_cost"):
+                        item[field] = None
                 continue
 
             prev = items[i - 1]
-            prev_reading = float(prev.get("reading", 0.0))
-            dt_curr = parse_iso_datetime(item.get("timestamp", ""))
-            dt_prev = parse_iso_datetime(prev.get("timestamp", ""))
-
-            delta_seconds = max(60, (dt_curr - dt_prev).total_seconds())
-            days = round(delta_seconds / 86400.0, 2)
-            if days < 0.01:
-                days = 0.01
-
-            delta_raw = max(0.0, reading - prev_reading)
+            try:
+                delta_raw, days = interval(prev, item)
+                if delta_raw is None:
+                    raise ReadingError("Wechselstand fehlt / Missing replacement reading")
+            except ReadingError as err:
+                item['incomplete'] = True
+                item['data_issue'] = str(err)
+                for field in ('consumption', 'consumption_kwh', 'days', 'daily_average', 'cost', 'work_cost', 'base_cost'):
+                    item[field] = None
+                continue
 
             if meter_type == METER_ELECTRICITY:
                 delta_kwh = delta_raw
@@ -312,6 +407,9 @@ class MeterSnapCoordinator:
             total_cost = work_cost + period_base_cost
             daily_avg = delta_kwh / days
 
+            if item.get("kind") == "replacement" and item.get("reading") is None:
+                item["incomplete"] = True
+                item["data_issue"] = "Neuer Anfangsstand fehlt / New starting reading missing"
             item["consumption"] = round(delta_raw, 3)
             item["consumption_kwh"] = round(delta_kwh, 2)
             item["days"] = days
@@ -322,4 +420,4 @@ class MeterSnapCoordinator:
 
     async def _async_save(self) -> None:
         """Save readings to persistent storage."""
-        await self._store.async_save(self._readings)
+        await self._store.async_save({**self._extra_storage, **self._readings, "_schema": 2, "_statistics": self._statistics})
